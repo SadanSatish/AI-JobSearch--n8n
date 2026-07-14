@@ -8,8 +8,7 @@ This project is fully optimized for **Render**. With the included `render.yaml` 
 - **Backend Orchestrator (n8n):** Render Web Service (Docker)
 - **Database:** Render Managed PostgreSQL
 - **Cache/Queue:** Render Managed Redis
-- **Vector Store:** Qdrant Private Service (Docker)
-
+- **Vector Store:** Qdrant Cloud (Managed SaaS)
 ## Step-by-Step Deployment
 
 1. **Push to GitHub**
@@ -21,9 +20,9 @@ This project is fully optimized for **Render**. With the included `render.yaml` 
    - Connect your repository.
 
 3. **Deploy the Blueprint**
-   - Render will parse `render.yaml` and discover the 5 services automatically.
+   - Render will parse `render.yaml` and discover the 4 components automatically.
    - Click **Apply**.
-   - Render will prompt you for any missing Environment Variables (like `OPENROUTER_API_KEY`, etc.). Fill them in securely in the Render Dashboard.
+   - Render will prompt you for any missing Environment Variables (like `OPENROUTER_API_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`). Fill them in securely in the Render Dashboard.
 
 4. **Verify Deployment**
    - Watch the deployment logs in Render.
