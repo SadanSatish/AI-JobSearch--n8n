@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "application_packet.schema.json",
+  "title": "ApplicationPacket",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["application_id", "user_id", "listing_id", "status"],
+  "properties": {
+    "application_id":    { "type": "string" },
+    "user_id":           { "type": "string" },
+    "listing_id":        { "type": "string" },
+    "listing_type":      { "type": "string", "enum": ["job", "internship"] },
+    "status":            { "type": "string", "enum": ["prepared","submitted","reviewing","interview_scheduled","interviewed","offer_received","rejected","withdrawn"] },
+    "resume_version_id": { "type": ["string", "null"] },
+    "cover_letter_id":   { "type": ["string", "null"] },
+    "ats_report_id":     { "type": ["string", "null"] },
+    "ats_score":         { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+    "priority_rank":     { "type": ["integer", "null"] },
+    "apply_url":         { "type": ["string", "null"], "format": "uri" },
+    "notes":             { "type": ["string", "null"] },
+    "prepared_at":       { "type": "string", "format": "date-time" },
+    "applied_at":        { "type": ["string", "null"], "format": "date-time" }
+  }
+}

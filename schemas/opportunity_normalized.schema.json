@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "opportunity_normalized.schema.json",
+  "title": "Normalized Job/Internship",
+  "description": "Unified data contract for all job and internship listings across multiple sources",
+  "type": "object",
+  "required": ["title", "company_name", "apply_url", "source", "employment_type", "dedup_hash"],
+  "additionalProperties": false,
+  "properties": {
+    "title":            { "type": "string" },
+    "company_name":     { "type": "string" },
+    "location":         { "type": ["string", "null"] },
+    "remote_status":    { "type": "string", "enum": ["remote", "hybrid", "onsite", "unknown"] },
+    "employment_type":  { "type": "string", "enum": ["full_time", "part_time", "contract", "internship", "unknown"] },
+    "salary_min":       { "type": ["number", "null"] },
+    "salary_max":       { "type": ["number", "null"] },
+    "salary_currency":  { "type": ["string", "null"] },
+    "stipend_monthly":  { "type": ["number", "null"], "description": "Only populated if internship" },
+    "description":      { "type": ["string", "null"] },
+    "skills_required":  { "type": "array", "items": { "type": "string" } },
+    "apply_url":        { "type": "string" },
+    "source":           { "type": "string", "description": "e.g., 'serpapi', 'adzuna', 'mock'" },
+    "posted_at":        { "type": ["string", "null"], "format": "date-time" },
+    "dedup_hash":       { "type": "string", "description": "SHA256 of Title+Company" },
+    
+    "enrichment": {
+      "type": "object",
+      "properties": {
+        "match_score":      { "type": "integer", "minimum": 0, "maximum": 100 },
+        "match_explanation":{ "type": "string" },
+        "company_size":     { "type": ["string", "null"] },
+        "industry":         { "type": ["string", "null"] }
+      }
+    }
+  }
+}

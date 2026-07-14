@@ -1,0 +1,176 @@
+{
+  "name": "\ud83d\udd27 Utility: JD Intelligence",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "jd-001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst job = $input.first().json.job;\n\n// Basic caching mechanism to avoid repeatedly sending the exact same job description to the LLM\nconst hashStr = job.title + '|' + job.company_name + '|' + (job.description || '');\nconst hash = crypto.createHash('sha256').update(hashStr).digest('hex');\nconst cacheKey = `jd_intelligence:${hash}`;\n\nreturn [{ json: { job, cacheKey } }];"
+      },
+      "id": "jd-002",
+      "name": "Hash Job Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "util-cache-read-v1",
+        "mode": "wait",
+        "options": {},
+        "input": "={\n  \"key\": \"{{ $json.cacheKey }}\"\n}"
+      },
+      "id": "jd-003",
+      "name": "Cache Check",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [400, 300],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.hit }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "jd-004",
+      "name": "Hit Cache?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $('Hash Job Details').item.json.job;\nconst cache = $input.first().json.value;\nreturn [{ json: { job, jd_intelligence: cache } }];"
+      },
+      "id": "jd-005",
+      "name": "Return Cached",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $('Hash Job Details').item.json.job;\nconst prompt = `Extract requirements from this job.\\nTitle: ${job.title}\\nDescription: ${job.description || 'N/A'}`;\nreturn [{ json: { job, prompt, model: $env.MODEL_JD_INTELLIGENCE || 'google/gemini-flash-1.5' } }];"
+      },
+      "id": "jd-006",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OPENROUTER_BASE_URL }}/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENROUTER_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "={{ $json.model }}" },
+            { "name": "temperature", "value": "0.1" },
+            { "name": "response_format", "value": "{\"type\":\"json_object\"}" }
+          ]
+        },
+        "options": {
+          "body": "={\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a JD Analyzer. Return strictly JSON with 'mandatory_skills', 'preferred_skills', 'required_years_experience' (number), 'required_education', 'domain_keywords'.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt) }}\n    }\n  ]\n}"
+        }
+      },
+      "id": "jd-007",
+      "name": "LLM: Parse JD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1000, 300],
+      "retryOnFail": true,
+      "maxTries": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Build Prompt').item.json;\nconst llmRes = $input.first().json;\n\nlet parsed = {\n  mandatory_skills: [],\n  preferred_skills: [],\n  required_years_experience: 0,\n  required_education: null,\n  domain_keywords: []\n};\n\ntry {\n  parsed = { ...parsed, ...JSON.parse(llmRes.choices[0].message.content) };\n} catch (e) {}\n\nreturn [{ json: { job: req.job, jd_intelligence: parsed, cacheKey: $('Hash Job Details').item.json.cacheKey } }];"
+      },
+      "id": "jd-008",
+      "name": "Parse Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "util-cache-write-v1",
+        "mode": "fireAndForget",
+        "options": {},
+        "input": "={\n  \"key\": \"{{ $json.cacheKey }}\",\n  \"value\": {{ JSON.stringify($json.jd_intelligence) }},\n  \"ttl\": 604800\n}"
+      },
+      "id": "jd-009",
+      "name": "Write Cache",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1400, 300],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $input.first().json }];"
+      },
+      "id": "jd-010",
+      "name": "Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1600, 200]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Hash Job Details", "type": "main", "index": 0 }]]
+    },
+    "Hash Job Details": {
+      "main": [[{ "node": "Cache Check", "type": "main", "index": 0 }]]
+    },
+    "Cache Check": {
+      "main": [[{ "node": "Hit Cache?", "type": "main", "index": 0 }]]
+    },
+    "Hit Cache?": {
+      "main": [
+        [{ "node": "Return Cached", "type": "main", "index": 0 }],
+        [{ "node": "Build Prompt", "type": "main", "index": 0 }]
+      ]
+    },
+    "Return Cached": {
+      "main": [[{ "node": "Output", "type": "main", "index": 0 }]]
+    },
+    "Build Prompt": {
+      "main": [[{ "node": "LLM: Parse JD", "type": "main", "index": 0 }]]
+    },
+    "LLM: Parse JD": {
+      "main": [[{ "node": "Parse Result", "type": "main", "index": 0 }]]
+    },
+    "Parse Result": {
+      "main": [[{ "node": "Write Cache", "type": "main", "index": 0 }]]
+    },
+    "Write Cache": {
+      "main": [[{ "node": "Output", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "util-jd-intelligence-v1",
+  "id": "util-jd-intelligence",
+  "tags": [{ "name": "utility" }, { "name": "ats" }]
+}

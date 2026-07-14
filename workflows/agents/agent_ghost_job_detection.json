@@ -1,0 +1,81 @@
+{
+  "name": "\ud83d\udd27 Agent: Ghost & Scam Detection",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "gd-001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $input.first().json.job;\n\nconst prompt = `You are an expert Recruitment Fraud & Quality Analyst.\\n\\nJob Title: ${job.title}\\nCompany: ${job.company_name}\\nApply URL: ${job.apply_url}\\nDescription: ${job.description || 'N/A'}`;\n\nreturn [{\n  json: {\n    job,\n    prompt,\n    model: $env.MODEL_JOB_QUALITY || 'anthropic/claude-haiku-3'\n  }\n}];"
+      },
+      "id": "gd-002",
+      "name": "Prepare Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OPENROUTER_BASE_URL }}/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENROUTER_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "={{ $json.model }}" },
+            { "name": "temperature", "value": "0.1" },
+            { "name": "response_format", "value": "{\"type\":\"json_object\"}" }
+          ]
+        },
+        "options": {
+          "body": "={\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a Fraud Analyst. Return strictly JSON with ghost_probability (0-100), ghost_reasons ([]), scam_risk (0-100), scam_reasons ([]).\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt) }}\n    }\n  ]\n}"
+        }
+      },
+      "id": "gd-003",
+      "name": "LLM: Detect Fraud",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [400, 300],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Prepare Prompt').item.json;\nconst llmRes = $input.first().json;\n\nlet quality_report = {\n  ghost_probability: 0,\n  ghost_reasons: [],\n  scam_risk: 0,\n  scam_reasons: [],\n  confidence_score: 50\n};\n\nif (llmRes.choices && llmRes.choices.length > 0) {\n  try {\n    const parsed = JSON.parse(llmRes.choices[0].message.content);\n    quality_report = { ...quality_report, ...parsed, confidence_score: 90 };\n  } catch (e) {\n    quality_report.ghost_reasons.push('LLM parsing failed');\n  }\n} else {\n  quality_report.ghost_reasons.push('LLM request failed');\n}\n\nreq.job.quality_report = req.job.quality_report || {};\nObject.assign(req.job.quality_report, quality_report);\n\nreturn [{ json: req.job }];"
+      },
+      "id": "gd-004",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Prepare Prompt", "type": "main", "index": 0 }]]
+    },
+    "Prepare Prompt": {
+      "main": [[{ "node": "LLM: Detect Fraud", "type": "main", "index": 0 }]]
+    },
+    "LLM: Detect Fraud": {
+      "main": [[{ "node": "Merge Results", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "agent-ghost-job-detection-v2",
+  "id": "agent-ghost-job-detection",
+  "tags": [{ "name": "utility" }, { "name": "quality" }]
+}

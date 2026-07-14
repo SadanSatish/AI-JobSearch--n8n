@@ -1,0 +1,23 @@
+{
+  "name": "\ud83d\udcdd Agent: Cover Letter v1.0.0",
+  "nodes": [
+    { "parameters": {}, "id": "cl-0001", "name": "Execute Workflow Trigger", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1, "position": [200, 300] },
+    {
+      "parameters": {
+        "jsCode": "// AGENT: Cover Letter v1.0.0 — PLACEHOLDER\n// In Phase 5, for top-N listings by ATS score:\n//  1. Check Redis cache (key: cl:{resume_id}:{listing_id})\n//  2. If MISS: Send resume_profile + job + company_profile + career_goals to Claude 3.5 Sonnet\n//  3. Generate personalized cover letter with specified tone\n//  4. Validate word count (250-400 words)\n//  5. Store in cover_letters table\n//  6. Cache in Redis\n\nconst input = $input.first().json;\nconst ctx   = input.execution_context;\nif (!ctx) throw new Error('[cover_letter] Missing execution_context');\n\nconst started_at = Date.now();\nconst topN       = parseInt($env.PIPELINE_COVER_LETTER_TOP_N) || 5;\nconst ats_sorted = [...(ctx.results.ats_reports || [])].sort((a, b) => b.match_score - a.match_score);\nconst top_jobs   = ats_sorted.slice(0, topN);\n\nconsole.log(`[cover_letter] START | generating for top ${topN} listings`);\n\n// PLACEHOLDER: Generate stub cover letters\nconst cover_letters = top_jobs.map((r, idx) => ({\n  cover_letter_id: `cl_placeholder_${idx}_${ctx.user_id}`,\n  listing_id:      r.listing_id,\n  user_id:         ctx.user_id,\n  content:         'PLACEHOLDER — Personalized cover letter will be generated here by Claude 3.5 Sonnet in Phase 5.',\n  tone:            'formal',\n  word_count:      0,\n  model_used:      null,\n  tokens_used:     0,\n  created_at:      new Date().toISOString()\n}));\n\nctx.results.cover_letters = cover_letters;\nctx.agents_completed.push('cover_letter');\n\nconst duration_ms = Date.now() - started_at;\nconsole.log(`[cover_letter] COMPLETE (placeholder) | letters=${cover_letters.length}`);\n\nreturn [{\n  json: {\n    execution_context: ctx,\n    cover_letters,\n    status: 'placeholder',\n    agent_meta: { agent_id: 'agent-cover-letter', agent_version: '1.0.0', execution_id: ctx.execution_id, model_used: null, tokens_total: 0, duration_ms, status: 'placeholder', error: null }\n  }\n}];"
+      },
+      "id": "cl-0002",
+      "name": "Cover Letter: Generate Per Job",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": { "Execute Workflow Trigger": { "main": [[{ "node": "Cover Letter: Generate Per Job", "type": "main", "index": 0 }]] } },
+  "active": false,
+  "settings": { "executionOrder": "v1", "callerPolicy": "any" },
+  "versionId": "agent-cover-letter-v1-0-0",
+  "meta": { "instanceId": "placeholder-replace-after-import" },
+  "id": "agent-cover-letter-v1",
+  "tags": [{ "name": "agent" }, { "name": "cover-letter" }, { "name": "placeholder" }]
+}

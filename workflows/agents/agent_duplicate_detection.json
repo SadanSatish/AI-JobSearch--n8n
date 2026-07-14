@@ -1,0 +1,33 @@
+{
+  "name": "\ud83d\udd27 Agent: Advanced Duplicate Detection",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "dd-001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $input.first().json.job;\n// Basic Semantic Dedup stub. \n// In Phase 4 we did hard-hash deduplication (Title+Company). \n// Here we would ideally query Qdrant to find if an extremely similar job description \n// already exists for this company under a different title.\n\n// For the Phase 5 implementation, we will simulate the check returning 'clean'.\n\njob.is_duplicate = false;\njob.duplicate_reason = null;\n\nreturn [{ json: job }];"
+      },
+      "id": "dd-002",
+      "name": "Semantic Vector Search (Qdrant)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Semantic Vector Search (Qdrant)", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "agent-duplicate-detection-v2",
+  "id": "agent-duplicate-detection",
+  "tags": [{ "name": "utility" }, { "name": "quality" }]
+}

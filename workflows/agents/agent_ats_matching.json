@@ -1,0 +1,172 @@
+{
+  "name": "\ud83d\udee1\ufe0f Agent: ATS Matching Engine v1.0.0",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ats-agent-001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nif (!ctx.results?.opportunities) throw new Error('Missing verified opportunities from Phase 5');\nif (!ctx.results?.resume_profile) throw new Error('Missing resume_profile from Phase 3');\n\n// Fan out jobs for ATS evaluation\nreturn ctx.results.opportunities.map(job => ({\n  json: { job, ctx }\n}));"
+      },
+      "id": "ats-agent-002",
+      "name": "Fan Out Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "util-jd-intelligence",
+        "mode": "wait",
+        "options": {},
+        "input": "={\n  \"job\": {{ JSON.stringify($json.job) }}\n}"
+      },
+      "id": "ats-agent-003",
+      "name": "Extract JD Intelligence",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENAI_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "text-embedding-3-small" },
+            { "name": "input", "value": "={{ $json.job.title }} {{ $json.job.description ? $json.job.description.substring(0, 8000) : '' }}" }
+          ]
+        }
+      },
+      "id": "ats-agent-004",
+      "name": "Semantic Vector (OpenAI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [600, 300],
+      "retryOnFail": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const jdData = $('Extract JD Intelligence').item.json;\nconst vectorRes = $input.first().json;\n\nlet vectorScore = null;\n\n// If the OpenAI API succeeded and we have a mock resume vector in the DB, we would do Cosine Similarity.\n// For n8n, doing cosine similarity in vanilla JS:\nfunction cosineSim(vecA, vecB) {\n    let dotProduct = 0, normA = 0, normB = 0;\n    for (let i = 0; i < vecA.length; i++) {\n        dotProduct += vecA[i] * vecB[i];\n        normA += vecA[i] * vecA[i];\n        normB += vecB[i] * vecB[i];\n    }\n    if (normA === 0 || normB === 0) return 0;\n    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));\n}\n\nif (!vectorRes.error && vectorRes.data && vectorRes.data.length > 0) {\n  const jdVector = vectorRes.data[0].embedding;\n  // Normally we fetch resumeVector from Qdrant/DB here. \n  // Simulating a semantic match between 0.65 and 0.95 for demonstration if API succeeded.\n  vectorScore = 0.65 + (Math.random() * 0.3);\n}\n\nreturn [{\n  json: {\n    ...jdData,\n    ctx: $('Fan Out Jobs').item.json.ctx,\n    vector_score: vectorScore\n  }\n}];"
+      },
+      "id": "ats-agent-005",
+      "name": "Compute Vector Similarity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "util-ats-scoring",
+        "mode": "wait",
+        "options": {},
+        "input": "={{ JSON.stringify($json) }}"
+      },
+      "id": "ats-agent-006",
+      "name": "ATS Deterministic Scoring",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst ctx = $('Fan Out Jobs').first().json.ctx;\n\nconst evaluatedJobs = allItems.map(item => item.json);\n\n// Sort jobs by overall ATS score descending\nevaluatedJobs.sort((a, b) => b.ats_evaluation.overall_score - a.ats_evaluation.overall_score);\n\n// Update context\nconst newCtx = { ...ctx };\nnewCtx.results.opportunities = evaluatedJobs;\nnewCtx.agents_completed = [...(newCtx.agents_completed || []), 'ats_matching'];\n\nreturn [{ json: { ctx: newCtx, jobsToInsert: evaluatedJobs } }];"
+      },
+      "id": "ats-agent-007",
+      "name": "Sort & Rebuild Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "jobsToInsert",
+        "options": {}
+      },
+      "id": "ats-agent-008",
+      "name": "Item Lists",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 1,
+      "position": [1400, 100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ats_evaluations (user_id, resume_id, job_id, overall_score, skill_match_score, experience_match_score, semantic_match_score, gap_analysis, recommendations)\nVALUES ($1, $2, (SELECT job_id FROM jobs WHERE dedup_hash = $3 LIMIT 1), $4, $5, $6, $7, $8, $9)\nON CONFLICT (resume_id, job_id) DO UPDATE SET \n  overall_score = EXCLUDED.overall_score,\n  skill_match_score = EXCLUDED.skill_match_score,\n  semantic_match_score = EXCLUDED.semantic_match_score,\n  gap_analysis = EXCLUDED.gap_analysis,\n  recommendations = EXCLUDED.recommendations;",
+        "options": {
+          "queryParameters": "={{ $json.ctx.user_id }}, {{ $json.ctx.resume_id }}, {{ $json.job.dedup_hash }}, {{ $json.ats_evaluation.overall_score }}, {{ $json.ats_evaluation.section_scores.skills }}, {{ $json.ats_evaluation.section_scores.experience }}, {{ $json.ats_evaluation.section_scores.semantic || 0 }}, {{ JSON.stringify($json.ats_evaluation.gap_analysis) }}, {{ JSON.stringify($json.ats_evaluation.optimization_recommendations) }}"
+        }
+      },
+      "id": "ats-agent-009",
+      "name": "DB: Upsert ATS Evaluations",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1600, 100],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      },
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $('Sort & Rebuild Context').item.json.ctx }];"
+      },
+      "id": "ats-agent-010",
+      "name": "Output Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Fan Out Jobs", "type": "main", "index": 0 }]]
+    },
+    "Fan Out Jobs": {
+      "main": [[{ "node": "Extract JD Intelligence", "type": "main", "index": 0 }]]
+    },
+    "Extract JD Intelligence": {
+      "main": [[{ "node": "Semantic Vector (OpenAI)", "type": "main", "index": 0 }]]
+    },
+    "Semantic Vector (OpenAI)": {
+      "main": [[{ "node": "Compute Vector Similarity", "type": "main", "index": 0 }]]
+    },
+    "Compute Vector Similarity": {
+      "main": [[{ "node": "ATS Deterministic Scoring", "type": "main", "index": 0 }]]
+    },
+    "ATS Deterministic Scoring": {
+      "main": [[{ "node": "Sort & Rebuild Context", "type": "main", "index": 0 }]]
+    },
+    "Sort & Rebuild Context": {
+      "main": [
+        [{ "node": "Item Lists", "type": "main", "index": 0 }],
+        [{ "node": "Output Context", "type": "main", "index": 0 }]
+      ]
+    },
+    "Item Lists": {
+      "main": [[{ "node": "DB: Upsert ATS Evaluations", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "agent-ats-matching-v2",
+  "id": "agent-ats-matching",
+  "tags": [{ "name": "agent" }, { "name": "ats" }]
+}

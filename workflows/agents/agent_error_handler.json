@@ -1,0 +1,55 @@
+{
+  "name": "\ud83d\udce1 Agent: Error Handler (Global)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "err-001",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const err = $input.first().json;\nconst workflowName = err.workflow.name;\nconst executionId = err.execution.id;\nconst errorMsg = err.execution.error.message;\n\nconst payload = {\n  text: `\ud83d\udea8 *n8n Workflow Failure* \ud83d\udea8\\n*Workflow:* ${workflowName}\\n*Execution ID:* ${executionId}\\n*Error:* ${errorMsg}\\n\\nPlease check the n8n logs immediately.`\n};\n\nreturn [{ json: payload }];"
+      },
+      "id": "err-002",
+      "name": "Format Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TELEGRAM_WEBHOOK_URL || 'http://localhost:5678/mock-alert' }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "text", "value": "={{ $json.text }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "err-003",
+      "name": "Send Alert (Mock Telegram)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [400, 300],
+      "onError": "continueErrorOutput"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [[{ "node": "Format Alert", "type": "main", "index": 0 }]]
+    },
+    "Format Alert": {
+      "main": [[{ "node": "Send Alert (Mock Telegram)", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "agent-error-handler-v1",
+  "id": "agent-error-handler",
+  "tags": [{ "name": "agent" }, { "name": "observability" }]
+}

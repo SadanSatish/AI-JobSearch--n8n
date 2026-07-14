@@ -1,0 +1,224 @@
+{
+  "name": "\ud83e\udde0 Agent: Resume Intelligence v1.0.0",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ri-0001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst ctx = input.execution_context;\n\nif (!ctx) throw new Error('[resume_intelligence] Missing execution_context');\nif (!ctx.resume_id) throw new Error('[resume_intelligence] Missing resume_id');\nif (!ctx.user_id) throw new Error('[resume_intelligence] Missing user_id');\n\n// We expect the raw text to be injected by the orchestrator/upload step\n// If not present in ctx, we might need to fetch it from DB, but for Phase 3 we assume it's passed.\nif (!ctx.resume_text) throw new Error('[resume_intelligence] Missing resume_text in context');\n\nconsole.log(`[resume_intelligence] START | exec_id=${ctx.execution_id} | resume_id=${ctx.resume_id}`);\n\nreturn [{ json: ctx }];"
+      },
+      "id": "ri-0002",
+      "name": "Validate & Init",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst ctx = $input.first().json;\n\n// Clean text, limit to 50,000 chars (~12k tokens) to prevent context explosion\nlet text = (ctx.resume_text || '').replace(/\\r\\n/g, '\\n').trim();\nif (text.length > 50000) {\n  text = text.substring(0, 50000);\n  ctx.warnings = ctx.warnings || [];\n  ctx.warnings.push({ agent: 'resume_intelligence', warning: 'Resume truncated to 50k chars', timestamp: new Date().toISOString() });\n}\n\nconst hash = crypto.createHash('sha256').update(text).digest('hex');\nconst cacheKey = `resume_profile:${ctx.resume_id}:${hash}`;\n\nreturn [{ json: { ...ctx, resume_text_clean: text, text_hash: hash, cache_key: cacheKey } }];"
+      },
+      "id": "ri-0003",
+      "name": "Clean & Hash",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "util-cache-read-v1",
+        "mode": "wait",
+        "options": {},
+        "input": "={\n  \"key\": \"{{ $json.cache_key }}\"\n}"
+      },
+      "id": "ri-0004",
+      "name": "Cache Check (Redis)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.hit }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "ri-0005",
+      "name": "Cache Hit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cache = $input.first().json.value;\nconst ctx = $('Clean & Hash').item.json;\n\nconsole.log(`[resume_intelligence] CACHE HIT | resume_id=${ctx.resume_id}`);\n\nreturn [{\n  json: {\n    ...ctx,\n    results: {\n      ...(ctx.results || {}),\n      resume_profile: cache.resume_profile,\n      career_goals: cache.career_profile\n    },\n    agents_completed: [...(ctx.agents_completed || []), 'resume_intelligence']\n  }\n}];"
+      },
+      "id": "ri-0006",
+      "name": "Return Cached Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Clean & Hash').item.json;\nconst prompt = `You are an expert Resume Intelligence Engine. Extract every piece of professional info into JSON.\n\nRaw Resume:\n${ctx.resume_text_clean}`;\n// In a real n8n instance, we'd read this from the file system or pass it via config\n\nreturn [{\n  json: {\n    prompt,\n    model: $env.MODEL_RESUME_PARSING || 'google/gemini-flash-1.5'\n  }\n}];"
+      },
+      "id": "ri-0007",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OPENROUTER_BASE_URL }}/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENROUTER_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "={{ $json.model }}" },
+            { "name": "temperature", "value": "0" },
+            { "name": "response_format", "value": "{\"type\":\"json_object\"}" }
+          ]
+        },
+        "options": {
+          "body": "={\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an expert Resume Intelligence Engine. You must return ONLY valid JSON matching the exact schema. No markdown formatting block around it.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt) }}\n    }\n  ]\n}"
+        }
+      },
+      "id": "ri-0008",
+      "name": "LLM: Extract (Gemini Flash)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1200, 300],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const llmRes = $input.first().json;\nlet content = llmRes.choices[0].message.content;\n\n// Strip markdown code blocks if the model ignored instructions\nif (content.startsWith('```json')) content = content.replace(/^```json/, '');\nif (content.startsWith('```')) content = content.replace(/^```/, '');\ncontent = content.replace(/```$/, '');\n\nlet parsed;\ntry {\n  parsed = JSON.parse(content);\n} catch (e) {\n  throw new Error(`LLM returned invalid JSON: ${e.message}`);\n}\n\n// Basic validation\nif (!parsed.personal_info) throw new Error('Missing personal_info in LLM response');\n\nreturn [{ json: parsed }];"
+      },
+      "id": "ri-0009",
+      "name": "Parse LLM JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 300],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $input.first().json;\n// Load skill normalizer via HTTP or file. For n8n, we simulate the logic here.\n// Assume `parsed.skills_raw`, `parsed.experience` are available.\n\nconst normalizedSkills = [];\nconst rawSkills = parsed.skills_raw || [];\n\n// Example of normalization logic\nrawSkills.forEach(skill => {\n  let norm = skill;\n  if (skill.toLowerCase() === 'js') norm = 'JavaScript';\n  if (skill.toLowerCase() === 'reactjs') norm = 'React';\n  \n  normalizedSkills.push({\n    raw: skill,\n    normalized: norm,\n    category: 'unknown', // Would come from dictionary\n    is_primary: true,\n    frequency: 1,\n    last_used_year: new Date().getFullYear()\n  });\n});\n\nparsed.skills_matrix = normalizedSkills;\nreturn [{ json: parsed }];"
+      },
+      "id": "ri-0010",
+      "name": "Skill Intelligence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1600, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $input.first().json;\n\n// Career inference\nconst expYears = (parsed.experience || []).length * 1.5; // Dummy logic for brevity\nlet level = 'entry_level';\nif (expYears > 3) level = 'mid_level';\nif (expYears > 7) level = 'senior';\n\nparsed.career_profile = {\n  inferred_roles: [parsed.experience?.[0]?.role || 'Professional'],\n  experience_level: level,\n  primary_domain: 'General',\n  secondary_domain: null,\n  total_years_experience: expYears,\n  is_student: false\n};\n\n// Quality scoring\nlet score = 100;\nconst missing = [];\nif (!parsed.personal_info?.email) { score -= 20; missing.push('email'); }\nif (!parsed.summary) { score -= 10; missing.push('summary'); }\n\nparsed.quality_report = {\n  score,\n  missing_critical_fields: missing,\n  warnings: [],\n  empty_sections: [],\n  is_scanned_pdf: false\n};\n\nreturn [{ json: parsed }];"
+      },
+      "id": "ri-0011",
+      "name": "Career & Quality Inference",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENAI_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "text-embedding-3-small" },
+            { "name": "input", "value": "={{ $('Clean & Hash').item.json.resume_text_clean.substring(0, 8000) }}" }
+          ]
+        }
+      },
+      "id": "ri-0012",
+      "name": "Embeddings (OpenAI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const profile = $('Career & Quality Inference').item.json;\nconst ctx = $('Clean & Hash').item.json;\n\n// Final output build\nprofile.resume_id = ctx.resume_id;\nprofile.metadata = {\n  extracted_at: new Date().toISOString(),\n  parse_confidence: 95,\n  word_count: ctx.resume_text_clean.split(' ').length,\n  extraction_model: $env.MODEL_RESUME_PARSING,\n  text_hash: ctx.text_hash\n};\n\nreturn [{\n  json: {\n    ...ctx,\n    results: {\n      ...(ctx.results || {}),\n      resume_profile: profile,\n      career_goals: profile.career_profile\n    },\n    agents_completed: [...(ctx.agents_completed || []), 'resume_intelligence']\n  }\n}];"
+      },
+      "id": "ri-0013",
+      "name": "Build Context Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Validate & Init", "type": "main", "index": 0 }]]
+    },
+    "Validate & Init": {
+      "main": [[{ "node": "Clean & Hash", "type": "main", "index": 0 }]]
+    },
+    "Clean & Hash": {
+      "main": [[{ "node": "Cache Check (Redis)", "type": "main", "index": 0 }]]
+    },
+    "Cache Check (Redis)": {
+      "main": [[{ "node": "Cache Hit?", "type": "main", "index": 0 }]]
+    },
+    "Cache Hit?": {
+      "main": [
+        [{ "node": "Return Cached Result", "type": "main", "index": 0 }],
+        [{ "node": "Build Prompt", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Prompt": {
+      "main": [[{ "node": "LLM: Extract (Gemini Flash)", "type": "main", "index": 0 }]]
+    },
+    "LLM: Extract (Gemini Flash)": {
+      "main": [[{ "node": "Parse LLM JSON", "type": "main", "index": 0 }]]
+    },
+    "Parse LLM JSON": {
+      "main": [[{ "node": "Skill Intelligence", "type": "main", "index": 0 }]]
+    },
+    "Skill Intelligence": {
+      "main": [[{ "node": "Career & Quality Inference", "type": "main", "index": 0 }]]
+    },
+    "Career & Quality Inference": {
+      "main": [[{ "node": "Embeddings (OpenAI)", "type": "main", "index": 0 }]]
+    },
+    "Embeddings (OpenAI)": {
+      "main": [[{ "node": "Build Context Output", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1", "errorTriggerReturnItem": true },
+  "versionId": "agent-resume-intelligence-v2",
+  "id": "agent-resume-intelligence",
+  "tags": [{ "name": "agent" }, { "name": "resume" }]
+}

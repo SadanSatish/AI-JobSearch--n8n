@@ -1,0 +1,38 @@
+# Caddyfile for automatic HTTPS, Reverse Proxying, and API Rate Limiting
+
+# Replace with your actual production domain
+{$DOMAIN:localhost} {
+    
+    # 1. Frontend Route
+    # Route all standard traffic to the Vite/Nginx frontend container
+    handle /* {
+        reverse_proxy frontend:80
+    }
+
+    # 2. n8n Webhook Route
+    # Securely route /webhook/api to the n8n container.
+    # We apply rate limiting here to protect the backend.
+    handle_path /webhook/api/* {
+        rate_limit {
+            zone api {
+                key {remote_host}
+                events 100
+                window 1m
+            }
+        }
+        reverse_proxy n8n:5678
+    }
+
+    # 3. Block access to n8n internal UI from the public internet
+    # (Optional: Only allow access from specific IPs or use basic auth)
+    handle /n8n/* {
+        basicauth /* {
+            # Generate hash via `caddy hash-password`
+            admin {$N8N_UI_PASSWORD_HASH}
+        }
+        reverse_proxy n8n:5678
+    }
+
+    # Enable gzip compression
+    encode gzip zstd
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "resume_version.schema.json",
+  "title": "Resume Version",
+  "description": "A tailored version of the resume containing the optimized JSON profile and changelog",
+  "type": "object",
+  "required": ["tailored_resume", "change_log"],
+  "additionalProperties": false,
+  "properties": {
+    "tailored_resume": {
+      "type": "object",
+      "description": "The fully optimized resume profile matching the original resume_normalized schema structure"
+    },
+    "change_log": {
+      "$ref": "optimization_changelog.schema.json"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "\ud83d\udee0 Utility: DB Writer v1.0.0",
+  "nodes": [
+    { "parameters": {}, "id": "db-0001", "name": "Execute Workflow Trigger", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1, "position": [200, 300] },
+    {
+      "parameters": {
+        "jsCode": "// UTILITY: DB Writer v1.0.0\n// Reusable utility for writing records to PostgreSQL.\n// Provides a safe, centralized write path with:\n//   - Input validation\n//   - Error wrapping\n//   - Retry metadata\n//\n// INPUT:  { table: string, operation: 'insert'|'update'|'upsert', payload: object, conflict_on?: string }\n// OUTPUT: { success: boolean, table: string, operation: string, row_id?: string, error?: string }\n//\n// PLACEHOLDER: Logs the intent but does not execute.\n// In Phase 6, this will use n8n PostgreSQL node with parameterized queries.\n\nconst input = $input.first().json;\nconst { table, operation, payload, conflict_on } = input;\n\nif (!table)     throw new Error('[util_db_writer] Missing required field: table');\nif (!operation) throw new Error('[util_db_writer] Missing required field: operation');\nif (!payload)   throw new Error('[util_db_writer] Missing required field: payload');\n\nconst validOps = ['insert', 'update', 'upsert'];\nif (!validOps.includes(operation)) throw new Error(`[util_db_writer] Invalid operation: ${operation}. Must be: ${validOps.join(', ')}`);\n\nconsole.log(`[util_db_writer] ${operation.toUpperCase()} → ${table} (placeholder, not persisted)`);\n\nreturn [{\n  json: {\n    success:   false,\n    table,\n    operation,\n    row_id:    null,\n    persisted: false,\n    note:      'PLACEHOLDER — Will execute real PostgreSQL operation in Phase 6'\n  }\n}];"
+      },
+      "id": "db-0002",
+      "name": "DB Writer: Execute Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": { "Execute Workflow Trigger": { "main": [[{ "node": "DB Writer: Execute Query", "type": "main", "index": 0 }]] } },
+  "active": false,
+  "settings": { "executionOrder": "v1", "callerPolicy": "any" },
+  "versionId": "util-db-writer-v1-0-0",
+  "meta": { "instanceId": "placeholder-replace-after-import" },
+  "id": "util-db-writer-v1",
+  "tags": [{ "name": "utility" }, { "name": "database" }, { "name": "postgresql" }]
+}

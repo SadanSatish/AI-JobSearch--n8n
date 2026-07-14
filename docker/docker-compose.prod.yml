@@ -1,0 +1,112 @@
+version: "3.8"
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+      - N8N_UI_PASSWORD_HASH=${N8N_UI_PASSWORD_HASH}
+    networks:
+      - internal
+    depends_on:
+      - frontend
+      - n8n
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    networks:
+      - internal
+
+  n8n:
+    image: n8nio/n8n:latest
+    restart: always
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=jobsearch
+      - DB_POSTGRESDB_USER=${DB_USER:-jobsearch_user}
+      - DB_POSTGRESDB_PASSWORD=${DB_PASSWORD:-supersecret}
+      - N8N_HOST=${DOMAIN:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - WEBHOOK_URL=https://${DOMAIN:-localhost}/
+      - GENERIC_TIMEZONE=UTC
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=none # Save DB space
+      - EXECUTIONS_DATA_SAVE_ON_PROGRESS=false
+      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY}
+      - API_BEARER_TOKEN=${API_BEARER_TOKEN}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=${DB_USER:-jobsearch_user}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-supersecret}
+      - POSTGRES_DB=jobsearch
+      # Performance tuning for production
+      - POSTGRES_INITDB_ARGS="--data-checksums"
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=200"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../database/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-jobsearch_user} -d jobsearch"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: always
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  n8n_data:
+  postgres_data:
+  redis_data:
+  qdrant_data:

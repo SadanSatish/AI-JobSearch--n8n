@@ -1,0 +1,37 @@
+service:
+  # Qdrant service configuration
+  host: 0.0.0.0
+  http_port: 6333
+  grpc_port: 6334
+  
+  # API Key (set via QDRANT__SERVICE__API_KEY env var for security)
+  # api_key: ""
+
+storage:
+  # Storage path inside container (mapped to qdrant_data volume)
+  storage_path: /qdrant/storage
+
+  # Snapshots path
+  snapshots_path: /qdrant/snapshots
+
+  # Performance settings
+  performance:
+    max_search_threads: 0    # 0 = use all available CPUs
+    max_optimization_threads: 1
+
+  # Quantization (for large collections — enable in production)
+  quantization:
+    always_ram: false
+
+log_level: INFO
+
+# Collection defaults (applied when creating collections without explicit config)
+collection:
+  # Number of replicas (set to 2+ for production HA)
+  replication_factor: 1
+  
+  # Write consistency
+  write_consistency_factor: 1
+
+# Telemetry (disable for privacy)
+telemetry_disabled: true

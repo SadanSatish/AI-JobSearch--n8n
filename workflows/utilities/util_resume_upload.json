@@ -1,0 +1,190 @@
+{
+  "name": "🚀 Utility: Resume Upload",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "resume/upload",
+        "options": {}
+      },
+      "id": "upload-0001",
+      "name": "Webhook (POST /resume/upload)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "webhookId": "resume-upload-endpoint"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract user_id and file\nconst body = $input.first().json.body || {};\nconst headers = $input.first().json.headers || {};\nconst files = $input.first().binary || {};\n\nconst user_id = body.user_id || headers['x-user-id'];\nif (!user_id) throw new Error('Missing user_id in request body or headers');\n\nconst fileKey = Object.keys(files)[0];\nif (!fileKey) throw new Error('No file uploaded');\n\nconst file = files[fileKey];\nconst allowedMimeTypes = [\n  'application/pdf', \n  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',\n  'text/plain',\n  'text/markdown'\n];\n\nif (!allowedMimeTypes.includes(file.mimeType)) {\n  throw new Error(`Unsupported file type: ${file.mimeType}. Allowed: PDF, DOCX, TXT, MD`);\n}\n\n// Max 10MB\nconst maxSizeBytes = 10 * 1024 * 1024;\n// n8n doesn't expose file size directly in the basic binary object without parsing,\n// but we assume it's valid if n8n accepted it within its memory limits.\n\nreturn [{\n  json: {\n    user_id,\n    fileName: file.fileName,\n    mimeType: file.mimeType\n  },\n  binary: {\n    data: file\n  }\n}];"
+      },
+      "id": "upload-0002",
+      "name": "Validate Upload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.mimeType }}",
+              "operation": "contains",
+              "value2": "text"
+            }
+          ]
+        }
+      },
+      "id": "upload-0003",
+      "name": "Is Text File?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "sourceKey": "data",
+        "setDestinationKey": true,
+        "destinationKey": "resume_text"
+      },
+      "id": "upload-0004",
+      "name": "Extract Binary (PDF/DOCX)",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [860, 400]
+    },
+    {
+      "parameters": {
+        "set": {
+          "resume_text": "={{ $binary.data.data }}"
+        }
+      },
+      "id": "upload-0005",
+      "name": "Read Text Directly",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [860, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst text = $input.first().json.resume_text || '';\nconst user_id = $input.first().json.user_id;\nconst fileName = $input.first().json.fileName;\nconst mimeType = $input.first().json.mimeType;\n\n// Basic clean\nconst cleanText = text.replace(/\\r\\n/g, '\\n').replace(/\\n{3,}/g, '\\n\\n').trim();\nconst wordCount = cleanText.split(/\\s+/).length;\n\nif (wordCount < 50 && mimeType === 'application/pdf') {\n  throw new Error('SCANNED_PDF: Extracted text is too short. OCR is required (not supported in Phase 3).');\n}\n\nconst hash = crypto.createHash('sha256').update(cleanText).digest('hex');\n\nreturn [{\n  json: {\n    user_id,\n    fileName,\n    mimeType,\n    word_count: wordCount,\n    text_hash: hash,\n    resume_text: cleanText\n  }\n}];"
+      },
+      "id": "upload-0006",
+      "name": "Post-Process & Hash",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT resume_id FROM resume_uploads WHERE user_id = $1 AND text_hash = $2 LIMIT 1;",
+        "options": {
+          "queryParameters": "={{ $json.user_id }}, {{ $json.text_hash }}"
+        }
+      },
+      "id": "upload-0007",
+      "name": "Check Duplicate (PostgreSQL)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1320, 300],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.resume_id ? 1 : 0 }}",
+              "operation": "equal",
+              "value2": 1
+            }
+          ]
+        }
+      },
+      "id": "upload-0008",
+      "name": "Is Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO resume_profiles (user_id, parse_confidence) VALUES ($1, 0) RETURNING resume_id;\n-- Followed by insert into uploads, simplified for n8n node",
+        "options": {
+          "queryParameters": "={{ $('Post-Process & Hash').item.json.user_id }}"
+        }
+      },
+      "id": "upload-0009",
+      "name": "Create Resume DB Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1760, 400],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"status\": \"{{ $node['Is Duplicate?'].json.resume_id ? 'duplicate_found' : 'uploaded' }}\",\n  \"resume_id\": \"{{ $node['Is Duplicate?'].json.resume_id || $json.resume_id }}\",\n  \"word_count\": {{ $('Post-Process & Hash').item.json.word_count }},\n  \"text_hash\": \"{{ $('Post-Process & Hash').item.json.text_hash }}\"\n}",
+        "options": {}
+      },
+      "id": "upload-0010",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook (POST /resume/upload)": {
+      "main": [[{ "node": "Validate Upload", "type": "main", "index": 0 }]]
+    },
+    "Validate Upload": {
+      "main": [[{ "node": "Is Text File?", "type": "main", "index": 0 }]]
+    },
+    "Is Text File?": {
+      "main": [
+        [{ "node": "Read Text Directly", "type": "main", "index": 0 }],
+        [{ "node": "Extract Binary (PDF/DOCX)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Read Text Directly": {
+      "main": [[{ "node": "Post-Process & Hash", "type": "main", "index": 0 }]]
+    },
+    "Extract Binary (PDF/DOCX)": {
+      "main": [[{ "node": "Post-Process & Hash", "type": "main", "index": 0 }]]
+    },
+    "Post-Process & Hash": {
+      "main": [[{ "node": "Check Duplicate (PostgreSQL)", "type": "main", "index": 0 }]]
+    },
+    "Check Duplicate (PostgreSQL)": {
+      "main": [[{ "node": "Is Duplicate?", "type": "main", "index": 0 }]]
+    },
+    "Is Duplicate?": {
+      "main": [
+        [{ "node": "Respond to Webhook", "type": "main", "index": 0 }],
+        [{ "node": "Create Resume DB Record", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Resume DB Record": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "utility-resume-upload-v1",
+  "id": "utility-resume-upload",
+  "tags": [{ "name": "utility" }, { "name": "resume" }]
+}

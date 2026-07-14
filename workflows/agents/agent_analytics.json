@@ -1,0 +1,23 @@
+{
+  "name": "\ud83d\udcca Agent: Analytics v1.0.0",
+  "nodes": [
+    { "parameters": {}, "id": "an-0001", "name": "Execute Workflow Trigger", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1, "position": [200, 300] },
+    {
+      "parameters": {
+        "jsCode": "// AGENT: Analytics v1.0.0 — PLACEHOLDER\n// In Phase 6, this will:\n//  1. INSERT execution record into execution_logs table\n//  2. INSERT per-agent timing + token usage into agent_metrics\n//  3. UPDATE user aggregate stats\n//  4. Compute cost estimate based on model + token usage\n//  5. This agent is FIRE-AND-FORGET — never blocks the pipeline\n\nconst input = $input.first().json;\nconst ctx   = input.execution_context;\nif (!ctx) {\n  console.warn('[analytics] Missing execution_context — skipping');\n  return [{ json: { status: 'skipped', reason: 'missing context' } }];\n}\n\nconst started_at = Date.now();\nconsole.log(`[analytics] START | execution_id=${ctx.execution_id}`);\n\n// PLACEHOLDER: Log analytics summary to console\nconst analytics_record = {\n  execution_id:      ctx.execution_id,\n  user_id:           ctx.user_id,\n  pipeline_version:  ctx.pipeline_version,\n  started_at:        ctx.started_at,\n  ended_at:          new Date().toISOString(),\n  status:            ctx.pipeline_status || 'completed',\n  agents_completed:  ctx.agents_completed?.length || 0,\n  agents_failed:     ctx.agents_failed?.length    || 0,\n  total_tokens_used: ctx.meta?.total_tokens_used  || 0,\n  total_cost_usd:    ctx.meta?.total_cost_usd     || 0,\n  total_duration_ms: ctx.meta?.total_duration_ms  || 0,\n  jobs_found:        ctx.results?.jobs_merged?.length        || 0,\n  jobs_filtered:     ctx.results?.jobs_deduplicated?.length  || 0,\n  applications_ready:ctx.results?.application_packets?.length|| 0,\n  persisted:         false,\n  note:              'PLACEHOLDER — Will persist to execution_logs in Phase 6'\n};\n\nconsole.log('[analytics] Summary:', JSON.stringify(analytics_record, null, 2));\n\nconst duration_ms = Date.now() - started_at;\nconsole.log(`[analytics] COMPLETE (placeholder) | duration=${duration_ms}ms`);\n\nreturn [{\n  json: {\n    execution_context: ctx,\n    analytics_record,\n    status: 'placeholder',\n    agent_meta: { agent_id: 'agent-analytics', agent_version: '1.0.0', execution_id: ctx.execution_id, model_used: null, tokens_total: 0, duration_ms, status: 'placeholder', error: null }\n  }\n}];"
+      },
+      "id": "an-0002",
+      "name": "Analytics: Record Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": { "Execute Workflow Trigger": { "main": [[{ "node": "Analytics: Record Metrics", "type": "main", "index": 0 }]] } },
+  "active": false,
+  "settings": { "executionOrder": "v1", "callerPolicy": "any" },
+  "versionId": "agent-analytics-v1-0-0",
+  "meta": { "instanceId": "placeholder-replace-after-import" },
+  "id": "agent-analytics-v1",
+  "tags": [{ "name": "agent" }, { "name": "analytics" }, { "name": "placeholder" }]
+}

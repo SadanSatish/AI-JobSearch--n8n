@@ -1,0 +1,23 @@
+{
+  "name": "\ud83e\udde0 Agent: Memory v1.0.0",
+  "nodes": [
+    { "parameters": {}, "id": "mem-0001", "name": "Execute Workflow Trigger", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1, "position": [200, 300] },
+    {
+      "parameters": {
+        "jsCode": "// AGENT: Memory v1.0.0 — PLACEHOLDER\n// This is a UTILITY agent called by other agents, not by Master Workflow directly.\n// Operations: store_memory | retrieve_memory | invalidate_memory\n// In Phase 4, this will:\n//  1. store_memory:    Embed content → store in Qdrant collection → cache key in Redis\n//  2. retrieve_memory: Embed query → Qdrant similarity search → return top-K results\n//  3. invalidate_memory: Remove from Qdrant + Redis cache\n\nconst input = $input.first().json;\nconst ctx   = input.execution_context;\nconst op    = input.operation; // 'store_memory' | 'retrieve_memory' | 'invalidate_memory'\n\nif (!op) throw new Error('[memory] Missing operation field. Must be: store_memory | retrieve_memory | invalidate_memory');\n\nconst started_at = Date.now();\nconsole.log(`[memory] START | operation=${op} | execution_id=${ctx?.execution_id}`);\n\nlet result = {};\n\nswitch (op) {\n  case 'store_memory':\n    // PLACEHOLDER: Log the store request\n    result = { stored: true, qdrant_point_id: `placeholder_${Date.now()}`, collection: input.collection || 'default' };\n    break;\n  case 'retrieve_memory':\n    // PLACEHOLDER: Return empty results\n    result = { memories: [], total: 0, query: input.query, collection: input.collection || 'default' };\n    break;\n  case 'invalidate_memory':\n    // PLACEHOLDER: Log invalidation\n    result = { invalidated: true, keys_removed: 0 };\n    break;\n  default:\n    throw new Error(`[memory] Unknown operation: ${op}`);\n}\n\nconst duration_ms = Date.now() - started_at;\nconsole.log(`[memory] COMPLETE (placeholder) | op=${op} | duration=${duration_ms}ms`);\n\nreturn [{\n  json: {\n    execution_context: ctx,\n    operation: op,\n    result,\n    status: 'placeholder',\n    agent_meta: { agent_id: 'agent-memory', agent_version: '1.0.0', execution_id: ctx?.execution_id, model_used: null, tokens_total: 0, duration_ms, status: 'placeholder', error: null }\n  }\n}];"
+      },
+      "id": "mem-0002",
+      "name": "Memory: Execute Operation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": { "Execute Workflow Trigger": { "main": [[{ "node": "Memory: Execute Operation", "type": "main", "index": 0 }]] } },
+  "active": false,
+  "settings": { "executionOrder": "v1", "callerPolicy": "any" },
+  "versionId": "agent-memory-v1-0-0",
+  "meta": { "instanceId": "placeholder-replace-after-import" },
+  "id": "agent-memory-v1",
+  "tags": [{ "name": "agent" }, { "name": "memory" }, { "name": "qdrant" }, { "name": "placeholder" }]
+}

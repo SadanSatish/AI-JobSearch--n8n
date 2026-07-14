@@ -1,0 +1,81 @@
+{
+  "name": "\ud83d\udd27 Utility: Outreach Generator",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "out-001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst skills = (input.tailored_resume.skills_matrix || []).slice(0,3).map(s => s.normalized).join(', ');\nconst prompt = `Generate outreach.\\nTarget Role: ${input.job.title}\\nTarget Company: ${input.job.company_name}\\nTop 3 Skills: ${skills}`;\n\nreturn [{\n  json: {\n    job_id: input.job.job_id || input.job.dedup_hash,\n    prompt,\n    model: $env.MODEL_OUTREACH || 'google/gemini-flash-1.5'\n  }\n}];"
+      },
+      "id": "out-002",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OPENROUTER_BASE_URL }}/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENROUTER_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "={{ $json.model }}" },
+            { "name": "temperature", "value": "0.3" },
+            { "name": "response_format", "value": "{\"type\":\"json_object\"}" }
+          ]
+        },
+        "options": {
+          "body": "={\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a Networking Coach. Return JSON with 'linkedin_message', 'email_draft' (subject, body), and 'follow_up_message'. NEVER fabricate qualifications.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt) }}\n    }\n  ]\n}"
+        }
+      },
+      "id": "out-003",
+      "name": "LLM: Generate Outreach",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [400, 300],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Build Prompt').item.json;\nconst llmRes = $input.first().json;\n\nlet outreach = {\n  linkedin_message: '',\n  email_draft: { subject: '', body: '' },\n  follow_up_message: ''\n};\n\ntry {\n  if (llmRes.choices && llmRes.choices.length > 0) {\n    const parsed = JSON.parse(llmRes.choices[0].message.content);\n    outreach = { ...outreach, ...parsed };\n  }\n} catch (e) {}\n\nreturn [{\n  json: {\n    job_id: req.job_id,\n    outreach\n  }\n}];"
+      },
+      "id": "out-004",
+      "name": "Parse Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Build Prompt", "type": "main", "index": 0 }]]
+    },
+    "Build Prompt": {
+      "main": [[{ "node": "LLM: Generate Outreach", "type": "main", "index": 0 }]]
+    },
+    "LLM: Generate Outreach": {
+      "main": [[{ "node": "Parse Result", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "util-outreach-generator-v1",
+  "id": "util-outreach-generator",
+  "tags": [{ "name": "utility" }, { "name": "application" }]
+}

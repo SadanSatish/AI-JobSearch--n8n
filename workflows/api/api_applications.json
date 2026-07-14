@@ -1,0 +1,137 @@
+{
+  "name": "\ud83d\udce1 API: Applications Manager",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "api/v1/applications",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "api-app-001",
+      "name": "Webhook (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "webhookId": "api-applications"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "api/v1/applications/status",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "api-app-002",
+      "name": "Webhook (POST Status)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 400],
+      "webhookId": "api-applications-status"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $input.first().json.headers;\nconst token = headers.authorization || '';\n\nif (token !== `Bearer ${$env.API_BEARER_TOKEN}`) {\n  throw new Error('401 Unauthorized: Invalid Bearer Token');\n}\n\nconst userId = headers['x-user-id'] || '11111111-1111-1111-1111-111111111111';\nreturn [{ json: { user_id: userId } }];"
+      },
+      "id": "api-app-003",
+      "name": "Auth Middleware (GET)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $input.first().json.headers;\nconst body = $input.first().json.body;\nconst token = headers.authorization || '';\n\nif (token !== `Bearer ${$env.API_BEARER_TOKEN}`) {\n  throw new Error('401 Unauthorized: Invalid Bearer Token');\n}\n\nconst userId = headers['x-user-id'] || '11111111-1111-1111-1111-111111111111';\nreturn [{ json: { user_id: userId, application_id: body.application_id, status: body.status } }];"
+      },
+      "id": "api-app-004",
+      "name": "Auth Middleware (POST)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT a.*, j.title, j.company_name FROM applications a JOIN jobs j ON a.job_id = j.job_id WHERE a.user_id = $1 ORDER BY a.updated_at DESC;",
+        "options": {
+          "queryParameters": "={{ $json.user_id }}"
+        }
+      },
+      "id": "api-app-005",
+      "name": "DB: Fetch Apps",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [400, 200],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE applications SET status = $1 WHERE application_id = $2 AND user_id = $3 RETURNING *;",
+        "options": {
+          "queryParameters": "={{ $json.status }}, {{ $json.application_id }}, {{ $json.user_id }}"
+        }
+      },
+      "id": "api-app-006",
+      "name": "DB: Update Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [400, 400],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn [{ json: { status: 'success', data: items.map(i => i.json) } }];"
+      },
+      "id": "api-app-007",
+      "name": "Format GET",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { status: 'success', updated: true } }];"
+      },
+      "id": "api-app-008",
+      "name": "Format POST",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 400]
+    }
+  ],
+  "connections": {
+    "Webhook (GET)": {
+      "main": [[{ "node": "Auth Middleware (GET)", "type": "main", "index": 0 }]]
+    },
+    "Webhook (POST Status)": {
+      "main": [[{ "node": "Auth Middleware (POST)", "type": "main", "index": 0 }]]
+    },
+    "Auth Middleware (GET)": {
+      "main": [[{ "node": "DB: Fetch Apps", "type": "main", "index": 0 }]]
+    },
+    "Auth Middleware (POST)": {
+      "main": [[{ "node": "DB: Update Status", "type": "main", "index": 0 }]]
+    },
+    "DB: Fetch Apps": {
+      "main": [[{ "node": "Format GET", "type": "main", "index": 0 }]]
+    },
+    "DB: Update Status": {
+      "main": [[{ "node": "Format POST", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "api-applications-v1",
+  "id": "api-applications",
+  "tags": [{ "name": "api" }, { "name": "dashboard" }]
+}

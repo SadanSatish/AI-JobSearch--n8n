@@ -1,0 +1,225 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Database: Render Managed PostgreSQL
+  # ---------------------------------------------------------------------------
+  - type: pgo
+    name: jsp-postgres
+    plan: starter
+    databaseName: jobsearch
+    user: jobsearch_user
+    ipAllowList: [] # default to all if internal
+
+  # ---------------------------------------------------------------------------
+  # Redis: Render Managed Redis
+  # ---------------------------------------------------------------------------
+  - type: redis
+    name: jsp-redis
+    plan: starter
+    ipAllowList: [] # default to all if internal
+    maxmemoryPolicy: allkeys-lru
+
+  # ---------------------------------------------------------------------------
+  # Vector Store: Qdrant Private Service
+  # ---------------------------------------------------------------------------
+  - type: pserv
+    name: jsp-qdrant
+    env: docker
+    dockerfilePath: ./docker/Dockerfile.qdrant
+    plan: starter
+    healthCheckPath: /healthz
+    disk:
+      name: qdrant-data
+      mountPath: /qdrant/storage
+      sizeGB: 10
+    envVars:
+      - key: QDRANT__SERVICE__API_KEY
+        generateValue: true
+
+  # ---------------------------------------------------------------------------
+  # Backend Orchestrator: n8n Web Service
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: jsp-n8n
+    env: docker
+    dockerfilePath: ./docker/Dockerfile.n8n
+    plan: standard
+    healthCheckPath: /healthz
+    autoDeploy: true
+    disk:
+      name: n8n-data
+      mountPath: /home/node/.n8n
+      sizeGB: 10
+    envVars:
+      # Database connection (n8n internal)
+      - key: DB_TYPE
+        value: postgresdb
+      - key: DB_POSTGRESDB_HOST
+        fromDatabase:
+          name: jsp-postgres
+          property: host
+      - key: DB_POSTGRESDB_PORT
+        fromDatabase:
+          name: jsp-postgres
+          property: port
+      - key: DB_POSTGRESDB_DATABASE
+        fromDatabase:
+          name: jsp-postgres
+          property: database
+      - key: DB_POSTGRESDB_USER
+        fromDatabase:
+          name: jsp-postgres
+          property: user
+      - key: DB_POSTGRESDB_PASSWORD
+        fromDatabase:
+          name: jsp-postgres
+          property: password
+
+      # Application Database connection (platform data)
+      - key: APP_DB_HOST
+        fromDatabase:
+          name: jsp-postgres
+          property: host
+      - key: APP_DB_PORT
+        fromDatabase:
+          name: jsp-postgres
+          property: port
+      - key: APP_DB_NAME
+        fromDatabase:
+          name: jsp-postgres
+          property: database
+      - key: APP_DB_USER
+        fromDatabase:
+          name: jsp-postgres
+          property: user
+      - key: APP_DB_PASSWORD
+        fromDatabase:
+          name: jsp-postgres
+          property: password
+      - key: APP_DB_SCHEMA
+        value: public
+          
+      # Redis connection (n8n Bull Queue)
+      - key: QUEUE_BULL_REDIS_HOST
+        fromService:
+          type: redis
+          name: jsp-redis
+          property: host
+      - key: QUEUE_BULL_REDIS_PORT
+        fromService:
+          type: redis
+          name: jsp-redis
+          property: port
+      - key: QUEUE_BULL_REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: jsp-redis
+          property: password
+
+      # Redis Cache (Application Layer)
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: jsp-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: jsp-redis
+          property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: jsp-redis
+          property: password
+      - key: REDIS_DB
+        value: "0"
+
+      # Qdrant connection
+      - key: QDRANT_HOST
+        value: jsp-qdrant
+      - key: QDRANT_PORT
+        value: 6333
+      - key: QDRANT_API_KEY
+        fromService:
+          type: pserv
+          name: jsp-qdrant
+          envVarKey: QDRANT__SERVICE__API_KEY
+
+      # n8n Configuration
+      - key: N8N_HOST
+        fromService:
+          type: web
+          name: jsp-n8n
+          property: host
+      - key: WEBHOOK_URL
+        value: "https://jsp-n8n.onrender.com"
+      - key: N8N_PROTOCOL
+        value: https
+      - key: NODE_ENV
+        value: production
+      - key: N8N_ENCRYPTION_KEY
+        generateValue: true
+      - key: EXECUTIONS_DATA_SAVE_ON_ERROR
+        value: all
+      - key: EXECUTIONS_DATA_SAVE_ON_SUCCESS
+        value: none
+      - key: EXECUTIONS_DATA_SAVE_ON_PROGRESS
+        value: false
+      - key: N8N_DEFAULT_BINARY_DATA_MODE
+        value: filesystem
+        
+      # Authentication & Security
+      - key: N8N_BASIC_AUTH_ACTIVE
+        value: "true"
+      - key: N8N_BASIC_AUTH_USER
+        value: "admin"
+      - key: N8N_BASIC_AUTH_PASSWORD
+        sync: false
+      - key: ENCRYPTION_KEY_PII
+        sync: false
+      - key: API_BEARER_TOKEN
+        sync: false
+        
+      # API Keys (To be provided in the Render Dashboard)
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SERPAPI_KEY
+        sync: false
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_APP_KEY
+        sync: false
+      - key: RAPIDAPI_KEY
+        sync: false
+        
+      # Storage & Notifications (To be provided in the Render Dashboard)
+      - key: STORAGE_PROVIDER
+        value: "local"
+      - key: S3_BUCKET
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+
+  # ---------------------------------------------------------------------------
+  # Frontend: React/Vite Static Site
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: jsp-frontend
+    env: static
+    buildCommand: npm ci && npm run build
+    publishPath: ./dist
+    rootDir: ./frontend
+    pullRequestPreviewsEnabled: true
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: "https://jsp-n8n.onrender.com"
+      - key: NODE_VERSION
+        value: 18

@@ -1,0 +1,254 @@
+{
+  "name": "\ud83d\udd0e Agent: Job Search Engine v1.0.0",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "js-001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nif (!ctx.execution_id) throw new Error('Missing execution_id');\nif (!ctx.results?.resume_profile) throw new Error('Missing resume_profile from Phase 3');\n\nconst profile = ctx.results.career_goals || {};\nconst skills = ctx.results.resume_profile.skills_matrix || [];\n\nconst prompt = `You are an expert Recruitment AI.\\n\\nTarget Type: Full-Time Job\\nCareer Profile: ${JSON.stringify(profile)}\\nTop Skills: ${skills.filter(s => s.is_primary).map(s => s.normalized).join(', ')}`;\n\nreturn [{\n  json: {\n    ctx,\n    prompt,\n    model: $env.MODEL_SEARCH_STRATEGY || 'google/gemini-flash-1.5'\n  }\n}];"
+      },
+      "id": "js-002",
+      "name": "Init & Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OPENROUTER_BASE_URL }}/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENROUTER_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "={{ $json.model }}" },
+            { "name": "temperature", "value": "0.3" },
+            { "name": "response_format", "value": "{\"type\":\"json_object\"}" }
+          ]
+        },
+        "options": {
+          "body": "={\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Generate 3 boolean search queries. Return strictly JSON with a 'strategies' array.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt) }}\n    }\n  ]\n}"
+        }
+      },
+      "id": "js-003",
+      "name": "LLM: Generate Strategies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [400, 300],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Init & Build Prompt').item.json;\nconst llmRes = $input.first().json;\n\nlet parsed;\ntry {\n  parsed = JSON.parse(llmRes.choices[0].message.content);\n} catch (e) {\n  // Fallback\n  parsed = { strategies: [{ name: 'Fallback', query: req.ctx.results?.career_goals?.inferred_roles?.[0] || 'Software Engineer' }] };\n}\n\n// We will split the strategies into individual items to fan out the API requests\nreturn parsed.strategies.map(s => ({\n  json: { ctx: req.ctx, strategy: s }\n}));"
+      },
+      "id": "js-004",
+      "name": "Parse & Fan Out",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://serpapi.com/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "engine", "value": "google_jobs" },
+            { "name": "q", "value": "={{ $json.strategy.query }}" },
+            { "name": "api_key", "value": "={{ $env.SERPAPI_API_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "js-005",
+      "name": "Search SerpApi",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [800, 100],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.adzuna.com/v1/api/jobs/us/search/1",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "app_id", "value": "={{ $env.ADZUNA_APP_ID }}" },
+            { "name": "app_key", "value": "={{ $env.ADZUNA_API_KEY }}" },
+            { "name": "what", "value": "={{ $json.strategy.query }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "js-006",
+      "name": "Search Adzuna",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [800, 300],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const strategy = $input.first().json.strategy;\n\n// MOCK CONNECTOR: If APIs fail or no keys, we provide realistic mock data\nreturn [{\n  json: {\n    source: 'mock_aggregator',\n    results: [\n      {\n        title: 'Senior ' + strategy.query.replace(/[\"()]/g, '').split(' ')[0] + ' Engineer',\n        company: 'TechCorp Inc',\n        location: 'Remote',\n        salary_min: 120000,\n        salary_max: 180000,\n        url: 'https://techcorp.com/careers/1',\n        description: 'We are looking for a great engineer with skills in ' + strategy.query\n      },\n      {\n        title: strategy.query.replace(/[\"()]/g, '') + ' Developer',\n        company: 'Startup LLC',\n        location: 'New York, NY',\n        salary_min: 90000,\n        salary_max: 130000,\n        url: 'https://startup.io/jobs/2',\n        description: 'Fast-paced environment looking for ' + strategy.query\n      }\n    ]\n  }\n}];"
+      },
+      "id": "js-007",
+      "name": "Mock Connector",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst allItems = $input.all();\nconst ctx = $('Parse & Fan Out').item.json.ctx;\n\nconst rawJobs = [];\n\n// Process SerpApi\nconst serpItems = $('Search SerpApi').all();\nserpItems.forEach(item => {\n  if (item.json.error) return;\n  const jobs = item.json.jobs_results || [];\n  jobs.forEach(j => {\n    rawJobs.push({\n      title: j.title,\n      company_name: j.company_name,\n      location: j.location,\n      remote_status: j.location.toLowerCase().includes('remote') ? 'remote' : 'onsite',\n      employment_type: 'full_time',\n      salary_min: null,\n      salary_max: null,\n      salary_currency: null,\n      description: j.description,\n      apply_url: j.share_link || j.related_links?.[0]?.link || 'Unknown',\n      source: 'serpapi'\n    });\n  });\n});\n\n// Process Adzuna\nconst adzunaItems = $('Search Adzuna').all();\nadzunaItems.forEach(item => {\n  if (item.json.error) return;\n  const jobs = item.json.results || [];\n  jobs.forEach(j => {\n    rawJobs.push({\n      title: j.title,\n      company_name: j.company.display_name,\n      location: j.location.display_name,\n      remote_status: j.location.display_name.toLowerCase().includes('remote') ? 'remote' : 'onsite',\n      employment_type: j.contract_type === 'contract' ? 'contract' : 'full_time',\n      salary_min: j.salary_min,\n      salary_max: j.salary_max,\n      salary_currency: 'USD',\n      description: j.description,\n      apply_url: j.redirect_url,\n      source: 'adzuna'\n    });\n  });\n});\n\n// Process Mock\nconst mockItems = $('Mock Connector').all();\nmockItems.forEach(item => {\n  if (item.json.error) return;\n  const jobs = item.json.results || [];\n  jobs.forEach(j => {\n    rawJobs.push({\n      title: j.title,\n      company_name: j.company,\n      location: j.location,\n      remote_status: j.location.toLowerCase().includes('remote') ? 'remote' : 'onsite',\n      employment_type: 'full_time',\n      salary_min: j.salary_min,\n      salary_max: j.salary_max,\n      salary_currency: 'USD',\n      description: j.description,\n      apply_url: j.url,\n      source: 'mock'\n    });\n  });\n});\n\n// Deduplicate using SHA256(Title + Company)\nconst deduped = [];\nconst seenHashes = new Set();\n\nrawJobs.forEach(job => {\n  if (!job.title || !job.company_name) return;\n  const hashStr = (job.title.trim().toLowerCase() + '|' + job.company_name.trim().toLowerCase());\n  const hash = crypto.createHash('sha256').update(hashStr).digest('hex');\n  \n  if (!seenHashes.has(hash)) {\n    seenHashes.add(hash);\n    job.dedup_hash = hash;\n    deduped.push(job);\n  }\n});\n\n// We output the deduplicated jobs one by one for the enrichment/scoring loop\nreturn deduped.map(job => ({\n  json: { job, ctx }\n}));"
+      },
+      "id": "js-008",
+      "name": "Merge & Deduplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "util-job-enrichment",
+        "mode": "wait",
+        "options": {},
+        "input": "={{ $json.job }}"
+      },
+      "id": "js-009",
+      "name": "Enrich Job",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "util-job-scoring",
+        "mode": "wait",
+        "options": {},
+        "input": "={\n  \"job\": {{ JSON.stringify($json) }},\n  \"ctx\": {{ JSON.stringify($('Merge & Deduplicate').item.json.ctx) }}\n}"
+      },
+      "id": "js-010",
+      "name": "Score Job",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1400, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst ctx = $('Parse & Fan Out').item.json.ctx;\n\n// Collect all scored jobs\nlet jobs = allItems.map(i => i.json);\n\n// Rank by score descending\njobs.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));\n\n// Take top 20 for pipeline to avoid context explosion\nconst topJobs = jobs.slice(0, 20);\n\n// Update context\nconst newCtx = { ...ctx };\nnewCtx.results = newCtx.results || {};\nnewCtx.results.opportunities = newCtx.results.opportunities || [];\nnewCtx.results.opportunities.push(...topJobs);\nnewCtx.agents_completed = [...(newCtx.agents_completed || []), 'job_search'];\n\nreturn [{ json: { ctx: newCtx, jobsToInsert: topJobs } }];"
+      },
+      "id": "js-011",
+      "name": "Rank & Build Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1600, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO jobs (company_name, title, location, apply_url, source, match_score, dedup_hash)\nVALUES ($1, $2, $3, $4, $5, $6, $7)\nON CONFLICT (dedup_hash) DO UPDATE SET match_score = EXCLUDED.match_score;",
+        "options": {
+          "queryParameters": "={{ $json.company_name }}, {{ $json.title }}, {{ $json.location }}, {{ $json.apply_url }}, {{ $json.source }}, {{ $json.match_score }}, {{ $json.dedup_hash }}"
+        }
+      },
+      "id": "js-012",
+      "name": "DB: Upsert Jobs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1800, 100],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      },
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "jobsToInsert",
+        "options": {}
+      },
+      "id": "js-013",
+      "name": "Item Lists",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 1,
+      "position": [1600, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $('Rank & Build Context').item.json.ctx }];"
+      },
+      "id": "js-014",
+      "name": "Output Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Init & Build Prompt", "type": "main", "index": 0 }]]
+    },
+    "Init & Build Prompt": {
+      "main": [[{ "node": "LLM: Generate Strategies", "type": "main", "index": 0 }]]
+    },
+    "LLM: Generate Strategies": {
+      "main": [[{ "node": "Parse & Fan Out", "type": "main", "index": 0 }]]
+    },
+    "Parse & Fan Out": {
+      "main": [
+        [{ "node": "Search SerpApi", "type": "main", "index": 0 }],
+        [{ "node": "Search Adzuna", "type": "main", "index": 0 }],
+        [{ "node": "Mock Connector", "type": "main", "index": 0 }]
+      ]
+    },
+    "Search SerpApi": {
+      "main": [[{ "node": "Merge & Deduplicate", "type": "main", "index": 0 }]]
+    },
+    "Search Adzuna": {
+      "main": [[{ "node": "Merge & Deduplicate", "type": "main", "index": 0 }]]
+    },
+    "Mock Connector": {
+      "main": [[{ "node": "Merge & Deduplicate", "type": "main", "index": 0 }]]
+    },
+    "Merge & Deduplicate": {
+      "main": [[{ "node": "Enrich Job", "type": "main", "index": 0 }]]
+    },
+    "Enrich Job": {
+      "main": [[{ "node": "Score Job", "type": "main", "index": 0 }]]
+    },
+    "Score Job": {
+      "main": [[{ "node": "Rank & Build Context", "type": "main", "index": 0 }]]
+    },
+    "Rank & Build Context": {
+      "main": [
+        [{ "node": "Item Lists", "type": "main", "index": 0 }],
+        [{ "node": "Output Context", "type": "main", "index": 0 }]
+      ]
+    },
+    "Item Lists": {
+      "main": [[{ "node": "DB: Upsert Jobs", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "agent-job-search-v2",
+  "id": "agent-job-search",
+  "tags": [{ "name": "agent" }, { "name": "search" }]
+}

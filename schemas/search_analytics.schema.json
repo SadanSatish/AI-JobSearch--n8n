@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "search_analytics.schema.json",
+  "title": "Search Analytics",
+  "description": "Metadata for tracking the search pipeline performance and sources",
+  "type": "object",
+  "required": ["strategies_generated", "total_raw_results", "total_deduplicated", "sources_used"],
+  "additionalProperties": false,
+  "properties": {
+    "strategies_generated": { "type": "integer" },
+    "total_raw_results":    { "type": "integer" },
+    "total_deduplicated":   { "type": "integer" },
+    "total_enriched":       { "type": "integer" },
+    "sources_used":         { "type": "array", "items": { "type": "string" } },
+    "duration_ms":          { "type": "integer" },
+    "errors":               { "type": "array", "items": { "type": "string" } }
+  }
+}

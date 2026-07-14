@@ -1,0 +1,55 @@
+name: Production CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Frontend Dependencies
+      run: |
+        cd frontend
+        npm ci
+
+    - name: Frontend Type Check
+      run: |
+        cd frontend
+        npm run build
+
+    - name: Validate JSON Workflows
+      run: |
+        # Ensure all n8n workflows are valid JSON
+        for file in workflows/**/*.json; do
+          if ! jq -e . >/dev/null 2>&1 <<< "$(cat "$file")"; then
+            echo "Invalid JSON: $file"
+            exit 1
+          fi
+        done
+
+    - name: Validate Database Migrations
+      run: |
+        # Very basic check to ensure no syntax errors in SQL dumps
+        if grep -q "ERROR:" database/migrations/*.sql; then
+          echo "Found error keyword in SQL migrations"
+          exit 1
+        fi
+
+    # In a real deployment, we would build and push Docker images here
+    # - name: Build Docker Compose (Dry Run)
+    #   run: |
+    #     cd docker
+    #     docker compose -f docker-compose.prod.yml build

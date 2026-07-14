@@ -1,0 +1,189 @@
+{
+  "name": "\ud83d\udee1\ufe0f Agent: Application Automation Engine v1.0.0",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "app-001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nif (!ctx.results?.resume_versions || ctx.results.resume_versions.length === 0) {\n  throw new Error('No tailored resume versions available to apply with.');\n}\n\n// Fan out the tailored versions\nreturn ctx.results.resume_versions.map(version => ({\n  json: { version, ctx }\n}));"
+      },
+      "id": "app-002",
+      "name": "Fan Out Versions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT application_id FROM applications WHERE user_id = $1 AND job_id = (SELECT job_id FROM jobs WHERE dedup_hash = $2 LIMIT 1);",
+        "options": {
+          "queryParameters": "={{ $json.ctx.user_id }}, {{ $json.version.job.dedup_hash }}"
+        }
+      },
+      "id": "app-003",
+      "name": "DB: Check Duplicate",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [400, 300],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $input.first().json.rowCount || 0 }}",
+              "operation": "equal",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "app-004",
+      "name": "Is New?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const vData = $('Fan Out Versions').item.json;\nconst job = vData.version.job;\n\n// Priority Recalculation (User Formula)\n// ATS Score: 40%\n// Opportunity Quality Score: 30% (Use job.quality_report.ghost_probability to infer quality if direct score absent)\n// Hiring Probability: 15% (Mocked at 70 for now)\n// Application Readiness: 10% (Map ATS Readiness to num)\n// Deadline Urgency: 5% (Mocked at 50)\n\nconst atsScore = job.ats_evaluation?.overall_score || 0;\nconst qualityScore = 100 - (job.quality_report?.ghost_probability || 0) - (job.quality_report?.scam_risk || 0);\nconst hiringProb = 70; \nconst readiness = job.ats_evaluation?.hiring_readiness === 'HIGH' ? 100 : (job.ats_evaluation?.hiring_readiness === 'MEDIUM' ? 60 : 30);\nconst urgency = 50;\n\nconst priorityScore = Math.round(\n  (atsScore * 0.40) + \n  (qualityScore * 0.30) + \n  (hiringProb * 0.15) + \n  (readiness * 0.10) + \n  (urgency * 0.05)\n);\n\nlet priorityLevel = 'LOW';\nif (priorityScore >= 80) priorityLevel = 'HIGH';\nelse if (priorityScore >= 60) priorityLevel = 'MEDIUM';\n\nconst pkg = {\n  priority_score: priorityScore,\n  priority_level: priorityLevel,\n  priority_explanation: `ATS (${atsScore}) 40%, Quality (${qualityScore}) 30%, Readiness (${readiness}) 10%, HiringProb 15%, Urgency 5%`,\n  status: 'PREPARED',\n  materials: {\n    cover_letter: '',\n    outreach: {}\n  }\n};\n\nreturn [{\n  json: { ...vData, pkg }\n}];"
+      },
+      "id": "app-005",
+      "name": "Calculate Priority",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": "util-cover-letter",
+        "mode": "wait",
+        "options": {},
+        "input": "={\n  \"job\": {{ JSON.stringify($json.version.job) }},\n  \"tailored_resume\": {{ JSON.stringify($json.version.tailored_resume) }}\n}"
+      },
+      "id": "app-006",
+      "name": "Gen Cover Letter",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1000, 100]
+    },
+    {
+      "parameters": {
+        "workflowId": "util-outreach-generator",
+        "mode": "wait",
+        "options": {},
+        "input": "={\n  \"job\": {{ JSON.stringify($('Calculate Priority').item.json.version.job) }},\n  \"tailored_resume\": {{ JSON.stringify($('Calculate Priority').item.json.version.tailored_resume) }}\n}"
+      },
+      "id": "app-007",
+      "name": "Gen Outreach",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1200, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Calculate Priority').item.json;\nconst clRes = $('Gen Cover Letter').item.json;\nconst outRes = $('Gen Outreach').item.json;\n\nbase.pkg.materials.cover_letter = clRes.cover_letter;\nbase.pkg.materials.outreach = outRes.outreach;\n\nreturn [{ json: base }];"
+      },
+      "id": "app-008",
+      "name": "Merge Materials",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO applications (user_id, job_id, resume_version_id, status, priority_score, priority_level, cover_letter, outreach_messages, follow_up_date)\nVALUES (\n  $1, \n  (SELECT job_id FROM jobs WHERE dedup_hash = $2 LIMIT 1), \n  (SELECT version_id FROM resume_versions WHERE target_job_id = (SELECT job_id FROM jobs WHERE dedup_hash = $2 LIMIT 1) AND user_id = $1 ORDER BY created_at DESC LIMIT 1),\n  $3, $4, $5, $6, $7, NOW() + INTERVAL '7 days'\n);",
+        "options": {
+          "queryParameters": "={{ $json.ctx.user_id }}, {{ $json.version.job.dedup_hash }}, {{ $json.pkg.status }}, {{ $json.pkg.priority_score }}, {{ $json.pkg.priority_level }}, {{ $json.pkg.materials.cover_letter }}, {{ JSON.stringify($json.pkg.materials.outreach) }}"
+        }
+      },
+      "id": "app-009",
+      "name": "DB: Insert Application",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1600, 100],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      },
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const vData = $('Fan Out Versions').item.json;\nreturn [{\n  json: { \n    ...vData, \n    pkg: { status: 'DUPLICATE', priority_explanation: 'Skipped generation to prevent duplicate application in DB.' }\n  }\n}];"
+      },
+      "id": "app-010",
+      "name": "Mark Duplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst ctx = $('Fan Out Versions').first().json.ctx;\n\n// Add application packages to context\nctx.results.applications = allItems.map(i => i.json);\nctx.agents_completed = [...(ctx.agents_completed || []), 'application_automation'];\n\nreturn [{ json: ctx }];"
+      },
+      "id": "app-011",
+      "name": "Rebuild Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Fan Out Versions", "type": "main", "index": 0 }]]
+    },
+    "Fan Out Versions": {
+      "main": [[{ "node": "DB: Check Duplicate", "type": "main", "index": 0 }]]
+    },
+    "DB: Check Duplicate": {
+      "main": [[{ "node": "Is New?", "type": "main", "index": 0 }]]
+    },
+    "Is New?": {
+      "main": [
+        [{ "node": "Calculate Priority", "type": "main", "index": 0 }],
+        [{ "node": "Mark Duplicate", "type": "main", "index": 0 }]
+      ]
+    },
+    "Calculate Priority": {
+      "main": [[{ "node": "Gen Cover Letter", "type": "main", "index": 0 }]]
+    },
+    "Gen Cover Letter": {
+      "main": [[{ "node": "Gen Outreach", "type": "main", "index": 0 }]]
+    },
+    "Gen Outreach": {
+      "main": [[{ "node": "Merge Materials", "type": "main", "index": 0 }]]
+    },
+    "Merge Materials": {
+      "main": [[{ "node": "DB: Insert Application", "type": "main", "index": 0 }]]
+    },
+    "DB: Insert Application": {
+      "main": [[{ "node": "Rebuild Context", "type": "main", "index": 0 }]]
+    },
+    "Mark Duplicate": {
+      "main": [[{ "node": "Rebuild Context", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "agent-application-v2",
+  "id": "agent-application",
+  "tags": [{ "name": "agent" }, { "name": "application" }]
+}

@@ -1,0 +1,34 @@
+{
+  "name": "\ud83c\udfaf Agent: Career Goal v1.0.0",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "cg-0001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// AGENT: Career Goal v1.0.0\n// PURPOSE: Infer career goals, target roles, and search strategy\n// DEPENDS ON: resume_intelligence output\n// STATUS: PLACEHOLDER — Replace with real LLM logic in Phase 3\n// ============================================================\n\nconst input = $input.first().json;\nconst ctx   = input.execution_context;\n\nif (!ctx)                   throw new Error('[career_goal] Missing execution_context');\nif (!ctx.results?.resume_profile) throw new Error('[career_goal] Missing resume_profile — career goal depends on resume_intelligence');\n\nconst started_at = Date.now();\nconsole.log(`[career_goal] START | execution_id=${ctx.execution_id}`);\n\n// ⚠️  PLACEHOLDER RESPONSE\n// In Phase 3, this will call Claude Haiku with the resume_profile\n// to infer career goals, search keywords, and preferences.\n\nconst resume  = ctx.results.resume_profile;\nconst prefs   = ctx.preferences;\n\n// Build a placeholder career goal using user preferences as seed\nconst placeholder_career_goals = {\n  primary_role:       prefs.target_roles?.[0]       || `${resume.seniority_level} Developer`,\n  secondary_roles:    prefs.target_roles?.slice(1)  || [],\n  target_industries:  prefs.target_industries       || ['Technology', 'Software'],\n  experience_level:   resume.seniority_level        || 'junior',\n  search_keywords:    [\n    ...(resume.skills?.slice(0, 5) || []),\n    ...(prefs.target_roles         || ['software engineer'])\n  ],\n  excluded_keywords: [],\n  location_strategy: {\n    preferred_locations: prefs.preferred_locations  || [],\n    remote_preference:   prefs.remote_preference    || 'any',\n    willing_to_relocate: false\n  },\n  salary_expectations: {\n    min: prefs.salary_min || 0,\n    currency: 'USD'\n  },\n  job_types:  ['full_time'],\n  inferred_from: 'placeholder'\n};\n\nconst duration_ms = Date.now() - started_at;\nconsole.log(`[career_goal] COMPLETE (placeholder) | primary_role=${placeholder_career_goals.primary_role}`);\n\nreturn [{\n  json: {\n    execution_context: ctx,\n    career_goals: placeholder_career_goals,\n    status: 'placeholder',\n    agent_meta: {\n      agent_id:      'agent-career-goal',\n      agent_version: '1.0.0',\n      execution_id:  ctx.execution_id,\n      model_used:    null,\n      tokens_total:  0,\n      duration_ms,\n      status:        'placeholder',\n      error:         null\n    }\n  }\n}];"
+      },
+      "id": "cg-0002",
+      "name": "Career Goal: Infer & Structure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Career Goal: Infer & Structure", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "callerPolicy": "any" },
+  "versionId": "agent-career-goal-v1-0-0",
+  "meta": { "instanceId": "placeholder-replace-after-import" },
+  "id": "agent-career-goal-v1",
+  "tags": [{ "name": "agent" }, { "name": "career" }, { "name": "placeholder" }]
+}

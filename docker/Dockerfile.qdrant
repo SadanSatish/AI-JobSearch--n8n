@@ -1,0 +1,7 @@
+FROM qdrant/qdrant:latest
+
+# Copy production configuration
+COPY ./docker/qdrant/config.yaml /qdrant/config/production.yaml
+
+# Create necessary directories
+RUN mkdir -p /qdrant/storage /qdrant/snapshots

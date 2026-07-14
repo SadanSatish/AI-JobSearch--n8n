@@ -1,0 +1,85 @@
+{
+  "name": "\ud83d\udce1 Agent: Notifications",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days"
+            }
+          ]
+        }
+      },
+      "id": "notif-001",
+      "name": "Daily Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM applications WHERE status = 'SUBMITTED' AND follow_up_date <= CURRENT_DATE;",
+        "options": {}
+      },
+      "id": "notif-002",
+      "name": "DB: Find Follow-ups",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const apps = $input.all();\nif (apps.length === 0) return [];\n\nreturn apps.map(app => ({\n  json: {\n    user_id: app.json.user_id,\n    title: 'Application Follow-up Reminder',\n    message: `You applied to a job ${app.json.job_id} a week ago. Time to send a follow-up email!`,\n    type: 'DEADLINE'\n  }\n}));"
+      },
+      "id": "notif-003",
+      "name": "Format Notifications",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO notifications (user_id, title, message, type) VALUES ($1, $2, $3, $4);",
+        "options": {
+          "queryParameters": "={{ $json.user_id }}, {{ $json.title }}, {{ $json.message }}, {{ $json.type }}"
+        }
+      },
+      "id": "notif-004",
+      "name": "DB: Insert Notification",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [600, 300],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Trigger": {
+      "main": [[{ "node": "DB: Find Follow-ups", "type": "main", "index": 0 }]]
+    },
+    "DB: Find Follow-ups": {
+      "main": [[{ "node": "Format Notifications", "type": "main", "index": 0 }]]
+    },
+    "Format Notifications": {
+      "main": [[{ "node": "DB: Insert Notification", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "agent-notifications-v1",
+  "id": "agent-notifications",
+  "tags": [{ "name": "agent" }, { "name": "notifications" }]
+}

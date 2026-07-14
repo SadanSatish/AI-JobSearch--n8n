@@ -1,0 +1,81 @@
+{
+  "name": "\ud83d\udce1 API: System Health Check",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "health",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "health-001",
+      "name": "Webhook (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "webhookId": "api-health"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT 1 as db_status;",
+        "options": {}
+      },
+      "id": "health-002",
+      "name": "Check Postgres",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "command": "get",
+        "key": "health_check"
+      },
+      "id": "health-003",
+      "name": "Check Redis",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [400, 300],
+      "credentials": {
+        "redis": {
+          "id": "Local Redis",
+          "name": "Local Redis"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const dbOk = $('Check Postgres').item.json?.db_status === 1;\nconst redisOk = $('Check Redis').item !== undefined;\n\nconst status = dbOk && redisOk ? 'OK' : 'DEGRADED';\nconst statusCode = status === 'OK' ? 200 : 503;\n\nreturn [{\n  json: {\n    status,\n    services: {\n      database: dbOk ? 'OK' : 'UNREACHABLE',\n      redis: redisOk ? 'OK' : 'UNREACHABLE',\n      n8n: 'OK'\n    },\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "health-004",
+      "name": "Format Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    }
+  ],
+  "connections": {
+    "Webhook (GET)": {
+      "main": [[{ "node": "Check Postgres", "type": "main", "index": 0 }]]
+    },
+    "Check Postgres": {
+      "main": [[{ "node": "Check Redis", "type": "main", "index": 0 }]]
+    },
+    "Check Redis": {
+      "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "api-health-v1",
+  "id": "api-health",
+  "tags": [{ "name": "api" }, { "name": "observability" }]
+}

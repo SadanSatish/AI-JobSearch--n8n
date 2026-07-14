@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "resume_quality_report.schema.json",
+  "title": "Resume Quality Report",
+  "description": "Rule-based evaluation of resume completeness and quality",
+  "type": "object",
+  "required": ["score", "missing_critical_fields", "warnings", "empty_sections", "is_scanned_pdf"],
+  "additionalProperties": false,
+  "properties": {
+    "score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Computed quality score based on completeness and detail"
+    },
+    "missing_critical_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of missing essential fields (e.g., 'email', 'phone', 'summary')"
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Quality warnings (e.g., 'Experience entries missing durations', 'Projects missing technology lists')"
+    },
+    "empty_sections": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Expected sections that contained no data (e.g., 'certifications', 'projects')"
+    },
+    "is_scanned_pdf": {
+      "type": "boolean",
+      "description": "True if the resume text extraction yielded abnormally low word count for a PDF"
+    }
+  }
+}

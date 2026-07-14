@@ -1,0 +1,23 @@
+{
+  "name": "\u26a0\ufe0f Agent: Scam Detection v1.0.0",
+  "nodes": [
+    { "parameters": {}, "id": "sd-0001", "name": "Execute Workflow Trigger", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1, "position": [200, 300] },
+    {
+      "parameters": {
+        "jsCode": "// AGENT: Scam Detection v1.0.0 — PLACEHOLDER\n// In Phase 4, uses Claude Haiku with pattern detection:\n//  - Upfront payment requests → scam_score += 50\n//  - Unrealistic salary + minimal requirements → scam_score += 30\n//  - Non-professional email domains in description → scam_score += 20\n\nconst input = $input.first().json;\nconst ctx   = input.execution_context;\nif (!ctx) throw new Error('[scam_detection] Missing execution_context');\n\nconst started_at = Date.now();\nconst listings   = ctx.results.jobs_quality_scored || ctx.results.jobs_merged || [];\nconsole.log(`[scam_detection] START | listings=${listings.length}`);\n\n// PLACEHOLDER: Score all listings at scam_score=0 (none are scams)\nconst scam_scores = listings.map(l => ({\n  listing_id:   l.listing_id,\n  scam_score:   0,\n  is_scam:      false,\n  scam_signals: []\n}));\n\nconst duration_ms = Date.now() - started_at;\nconsole.log(`[scam_detection] COMPLETE (placeholder) | scams=0 / ${listings.length}`);\n\nreturn [{\n  json: {\n    execution_context: ctx,\n    filter_type:       'scam',\n    scam_scores,\n    status:            'placeholder',\n    agent_meta: { agent_id: 'agent-scam-detection', agent_version: '1.0.0', execution_id: ctx.execution_id, model_used: null, tokens_total: 0, duration_ms, status: 'placeholder', error: null }\n  }\n}];"
+      },
+      "id": "sd-0002",
+      "name": "Scam Detection: Analyze Listings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": { "Execute Workflow Trigger": { "main": [[{ "node": "Scam Detection: Analyze Listings", "type": "main", "index": 0 }]] } },
+  "active": false,
+  "settings": { "executionOrder": "v1", "callerPolicy": "any" },
+  "versionId": "agent-scam-detection-v1-0-0",
+  "meta": { "instanceId": "placeholder-replace-after-import" },
+  "id": "agent-scam-detection-v1",
+  "tags": [{ "name": "agent" }, { "name": "quality" }, { "name": "scam" }, { "name": "placeholder" }]
+}

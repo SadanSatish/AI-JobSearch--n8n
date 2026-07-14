@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ats_report.schema.json",
+  "title": "ATSReport",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["listing_id", "resume_id", "match_score"],
+  "properties": {
+    "listing_id":         { "type": "string" },
+    "resume_id":          { "type": "string" },
+    "resume_version_id":  { "type": ["string", "null"] },
+    "match_score":        { "type": "number", "minimum": 0, "maximum": 100 },
+    "matching_keywords":  { "type": "array", "items": { "type": "string" } },
+    "missing_keywords":   { "type": "array", "items": { "type": "string" } },
+    "skill_gaps":         { "type": "array", "items": { "type": "string" } },
+    "recommendation":     { "type": "string", "enum": ["apply", "optimize_first", "skip"] },
+    "priority_rank":      { "type": "integer", "minimum": 1 },
+    "model_used":         { "type": ["string", "null"] },
+    "tokens_used":        { "type": "integer", "minimum": 0 },
+    "cache_hit":          { "type": "boolean", "default": false },
+    "created_at":         { "type": "string", "format": "date-time" }
+  }
+}

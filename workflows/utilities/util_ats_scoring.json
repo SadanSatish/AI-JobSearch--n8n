@@ -1,0 +1,81 @@
+{
+  "name": "\ud83d\udd27 Utility: ATS Scoring Engine",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ats-001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst job = input.job;\nconst jd = input.jd_intelligence;\nconst ctx = input.ctx;\nconst resume = ctx.results.resume_profile;\nconst career = ctx.results.career_goals;\n\n// Extract vectors if passed. If OpenAI fails, these will be missing or mock fallback applies.\nconst semanticFallback = !input.vector_score;\nlet semanticScore = semanticFallback ? null : input.vector_score * 100;\n\n// 1. Skill Match (30 points)\nconst resumeSkills = (resume.skills_matrix || []).map(s => s.normalized.toLowerCase());\nconst jdMandatory = jd.mandatory_skills || [];\nconst missingMandatory = [];\nlet skillMatchCount = 0;\n\njdMandatory.forEach(skill => {\n  if (resumeSkills.includes(skill.toLowerCase())) {\n    skillMatchCount++;\n  } else {\n    missingMandatory.push(skill);\n  }\n});\nconst skillScore = jdMandatory.length === 0 ? 30 : Math.round((skillMatchCount / jdMandatory.length) * 30);\n\n// 2. Experience Match (20 points)\nconst jdExp = jd.required_years_experience || 0;\nconst resExp = career.total_years_experience || 0;\nlet expScore = 20;\nlet expGap = 0;\nif (resExp < jdExp) {\n  expScore = Math.max(0, 20 - ((jdExp - resExp) * 5));\n  expGap = jdExp - resExp;\n}\n\n// 3. Keyword Match (15 points)\nconst jdKeywords = jd.domain_keywords || [];\nconst missingKeywords = [];\nlet kwMatchCount = 0;\njdKeywords.forEach(kw => {\n  if (resumeSkills.includes(kw.toLowerCase()) || JSON.stringify(resume).toLowerCase().includes(kw.toLowerCase())) {\n    kwMatchCount++;\n  } else {\n    missingKeywords.push(kw);\n  }\n});\nconst keywordScore = jdKeywords.length === 0 ? 15 : Math.round((kwMatchCount / jdKeywords.length) * 15);\n\n// 4. Semantic Match (25 points) or Deterministic Fallback if Semantic failed\nlet finalSemanticWeight = 25;\nlet computedSemanticScore = 0;\nif (semanticFallback) {\n  // If OpenAI failed, reallocate the 25 points based purely on Title match and pure Keyword presence\n  const titleMatch = job.title.toLowerCase().includes((career.inferred_roles?.[0] || '').toLowerCase());\n  computedSemanticScore = titleMatch ? 15 : 0;\n  computedSemanticScore += (keywordScore / 15) * 10; \n} else {\n  computedSemanticScore = Math.round((semanticScore / 100) * 25);\n}\n\n// 5. Formatting/Quality (10 points)\nconst qualityScore = Math.round(((resume.quality_report?.score || 100) / 100) * 10);\n\nconst overallScore = Math.min(100, skillScore + expScore + keywordScore + computedSemanticScore + qualityScore);\n\n// Readiness classification\nlet readiness = 'LOW';\nif (overallScore >= 80) readiness = 'HIGH';\nelse if (overallScore >= 60) readiness = 'MEDIUM';\n\nconst evaluation = {\n  overall_score: overallScore,\n  section_scores: {\n    skills: skillScore,\n    experience: expScore,\n    keywords: keywordScore,\n    semantic: semanticFallback ? null : Math.round(semanticScore),\n    semantic_fallback_used: semanticFallback\n  },\n  hiring_readiness: readiness,\n  gap_analysis: {\n    missing_mandatory_skills: missingMandatory,\n    missing_preferred_skills: [], // To be populated if needed\n    missing_keywords: missingKeywords,\n    experience_gap_years: expGap\n  }\n};\n\n// Prepare Prompt for LLM Recommendations\nconst prompt = `Candidate ATS Score: ${overallScore}/100.\\nMissing Mandatory Skills: ${missingMandatory.join(', ')}.\\nMissing Keywords: ${missingKeywords.join(', ')}.\\nRecommend optimization strategies.`;\n\nreturn [{\n  json: {\n    job,\n    evaluation,\n    prompt,\n    model: $env.MODEL_ATS_RECOMMENDATION || 'anthropic/claude-haiku-3'\n  }\n}];"
+      },
+      "id": "ats-002",
+      "name": "Deterministic Scoring",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OPENROUTER_BASE_URL }}/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENROUTER_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "={{ $json.model }}" },
+            { "name": "temperature", "value": "0.1" },
+            { "name": "response_format", "value": "{\"type\":\"json_object\"}" }
+          ]
+        },
+        "options": {
+          "body": "={\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a Resume Coach. Return JSON with 'optimization_recommendations' array (priority, advice, target_section) and 'strategy' (KEEP_CURRENT, MINOR_CHANGES, MAJOR_CHANGES, CREATE_NEW). Never hallucinate skills.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt) }}\n    }\n  ]\n}"
+        }
+      },
+      "id": "ats-003",
+      "name": "LLM: Recommendations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [400, 300],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Deterministic Scoring').item.json;\nconst llmRes = $input.first().json;\n\nlet recommendations = [];\nlet strategy = 'MINOR_CHANGES';\n\nif (llmRes.choices && llmRes.choices.length > 0) {\n  try {\n    const parsed = JSON.parse(llmRes.choices[0].message.content);\n    recommendations = parsed.optimization_recommendations || [];\n    strategy = parsed.strategy || strategy;\n  } catch (e) {}\n}\n\nreq.evaluation.optimization_recommendations = recommendations;\nreq.evaluation.strategy = strategy;\n\nreturn [{ json: { job: req.job, ats_evaluation: req.evaluation } }];"
+      },
+      "id": "ats-004",
+      "name": "Merge & Finalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Deterministic Scoring", "type": "main", "index": 0 }]]
+    },
+    "Deterministic Scoring": {
+      "main": [[{ "node": "LLM: Recommendations", "type": "main", "index": 0 }]]
+    },
+    "LLM: Recommendations": {
+      "main": [[{ "node": "Merge & Finalize", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "util-ats-scoring-v1",
+  "id": "util-ats-scoring",
+  "tags": [{ "name": "utility" }, { "name": "ats" }]
+}

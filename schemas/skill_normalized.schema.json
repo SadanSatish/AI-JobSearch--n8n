@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "skill_normalized.schema.json",
+  "title": "Normalized Skill",
+  "description": "Represents a single skill after normalization and categorization",
+  "type": "object",
+  "required": ["raw", "normalized", "category", "is_primary", "frequency", "last_used_year"],
+  "additionalProperties": false,
+  "properties": {
+    "raw": {
+      "type": "string",
+      "description": "The original skill text extracted from the resume (e.g., 'React.js', 'ReactJS', 'JS')"
+    },
+    "normalized": {
+      "type": "string",
+      "description": "The canonical skill name mapped via skill_normalizer.json (e.g., 'React', 'JavaScript')"
+    },
+    "category": {
+      "type": "string",
+      "description": "The category the skill belongs to (e.g., 'frameworks', 'programming_languages', 'databases'). 'uncategorized' if unknown."
+    },
+    "is_primary": {
+      "type": "boolean",
+      "description": "True if the skill appears frequently or is listed in recent roles/projects"
+    },
+    "frequency": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of times the skill appears across the entire resume (skills section + experience + projects)"
+    },
+    "last_used_year": {
+      "type": ["integer", "null"],
+      "description": "The most recent year this skill was mentioned in an experience or project. Null if only found in the skills list."
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "name": "\ud83d\udd27 Utility: Job Enrichment",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "je-0001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $input.first().json;\n\n// In a real scenario, this would query a Company Enrichment API (like Clearbit, Apollo, or LinkedIn) \n// based on `job.company_name` to find industry, funding, and size.\n\n// For Phase 4 Mock, we do deterministic inference based on name length/keywords.\nlet size = 'unknown';\nlet industry = 'Technology';\n\nconst name = (job.company_name || '').toLowerCase();\nif (name.includes('inc') || name.includes('corp')) size = '1000+';\nelse if (name.includes('llc') || name.includes('group')) size = '200-1000';\nelse size = '1-50';\n\nif (name.includes('health') || name.includes('med')) industry = 'Healthcare';\nelse if (name.includes('bank') || name.includes('capital')) industry = 'Finance';\n\njob.enrichment = job.enrichment || {};\njob.enrichment.company_size = size;\njob.enrichment.industry = industry;\n\nreturn [{ json: job }];"
+      },
+      "id": "je-0002",
+      "name": "Enrich Company Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": "public",
+        "table": "companies",
+        "columns": "company_name,industry,company_size",
+        "conflictTarget": "company_name",
+        "options": {
+          "queryParameters": ""
+        }
+      },
+      "id": "je-0003",
+      "name": "Upsert Company (PostgreSQL)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [400, 300],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Enrich Company Data", "type": "main", "index": 0 }]]
+    },
+    "Enrich Company Data": {
+      "main": [[{ "node": "Upsert Company (PostgreSQL)", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "util-job-enrichment-v1",
+  "id": "util-job-enrichment",
+  "tags": [{ "name": "utility" }, { "name": "enrichment" }]
+}

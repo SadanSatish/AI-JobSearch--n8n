@@ -1,0 +1,74 @@
+{
+  "name": "\ud83d\udce1 API: Dashboard KPIs",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "api/v1/dashboard/kpis",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "api-kpi-001",
+      "name": "Webhook (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "webhookId": "api-dashboard-kpis"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $input.first().json.headers;\nconst token = headers.authorization || '';\n\nif (token !== `Bearer ${$env.API_BEARER_TOKEN}`) {\n  throw new Error('401 Unauthorized: Invalid Bearer Token');\n}\n\n// We would extract user_id from JWT here. For now, we mock reading the user_id from the header or use a default.\nconst userId = headers['x-user-id'] || '11111111-1111-1111-1111-111111111111';\n\nreturn [{ json: { user_id: userId } }];"
+      },
+      "id": "api-kpi-002",
+      "name": "Auth Middleware",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM mv_dashboard_kpis WHERE user_id = $1;",
+        "options": {
+          "queryParameters": "={{ $json.user_id }}"
+        }
+      },
+      "id": "api-kpi-003",
+      "name": "DB: Fetch KPIs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [400, 300],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first()?.json || {};\nreturn [{\n  json: {\n    status: 'success',\n    data: {\n      total_jobs_found: data.total_jobs_found || 0,\n      high_priority_jobs: data.high_priority_jobs || 0,\n      total_applications: data.total_applications || 0,\n      interview_invitations: data.interview_invitations || 0,\n      applications_ready: data.applications_ready || 0,\n      avg_ats_score: data.avg_ats_score || 0,\n      success_rate: data.success_rate || 0\n    }\n  }\n}];"
+      },
+      "id": "api-kpi-004",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    }
+  ],
+  "connections": {
+    "Webhook (GET)": {
+      "main": [[{ "node": "Auth Middleware", "type": "main", "index": 0 }]]
+    },
+    "Auth Middleware": {
+      "main": [[{ "node": "DB: Fetch KPIs", "type": "main", "index": 0 }]]
+    },
+    "DB: Fetch KPIs": {
+      "main": [[{ "node": "Format Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "api-dashboard-kpis-v1",
+  "id": "api-dashboard-kpis",
+  "tags": [{ "name": "api" }, { "name": "dashboard" }]
+}

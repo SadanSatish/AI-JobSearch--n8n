@@ -1,0 +1,23 @@
+{
+  "name": "\ud83d\udd14 Agent: Notification Engine v1.0.0",
+  "nodes": [
+    { "parameters": {}, "id": "ne-0001", "name": "Execute Workflow Trigger", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1, "position": [200, 300] },
+    {
+      "parameters": {
+        "jsCode": "// AGENT: Notification Engine v1.0.0 — PLACEHOLDER\n// In Phase 6, this will:\n//  1. Read user's notification_channels from preferences (email, slack, webhook)\n//  2. For each channel: render notification template\n//  3. Send via SMTP (email) / Slack webhook / HTTP webhook\n//  4. INSERT into notifications table with status\n//  5. Retry up to 3x on failure\n//  6. Dedup: check notifications table to avoid duplicate sends\n\nconst input = $input.first().json;\nconst ctx   = input.execution_context;\n\n// Tolerant: notification agent should never crash the pipeline\nif (!ctx) {\n  console.warn('[notification_engine] Missing execution_context — sending error notification with minimal data');\n}\n\nconst started_at = Date.now();\nconsole.log(`[notification_engine] START | execution_id=${ctx?.execution_id}`);\n\n// Determine notification type\nconst isErrorNotification = input.error_type === 'pipeline_error';\nconst packets = ctx?.results?.application_packets || [];\n\n// PLACEHOLDER: Log what would be sent\nconst notification_log = {\n  notification_id:  `notif_placeholder_${Date.now()}`,\n  user_id:          ctx?.user_id || 'unknown',\n  execution_id:     ctx?.execution_id || 'unknown',\n  type:             isErrorNotification ? 'pipeline_error' : 'pipeline_complete',\n  channel:          'placeholder',\n  subject:          isErrorNotification\n    ? '⚠️ Job Search Pipeline Error'\n    : `✅ Job Search Complete — ${packets.length} applications ready`,\n  body:             isErrorNotification\n    ? `Pipeline error: ${input.message || 'Unknown error'}`\n    : `Your job search pipeline has completed. ${packets.length} application packets are ready for review.`,\n  status:           'placeholder',\n  sent_at:          null,\n  note:             'PLACEHOLDER — Will send real notifications via SMTP/Slack/webhook in Phase 6'\n};\n\nconsole.log(`[notification_engine] COMPLETE (placeholder) | type=${notification_log.type}`);\n\nreturn [{\n  json: {\n    execution_context: ctx,\n    notification_log,\n    notifications_sent: 0,\n    status: 'placeholder',\n    agent_meta: { agent_id: 'agent-notification-engine', agent_version: '1.0.0', execution_id: ctx?.execution_id, model_used: null, tokens_total: 0, duration_ms: Date.now() - started_at, status: 'placeholder', error: null }\n  }\n}];"
+      },
+      "id": "ne-0002",
+      "name": "Notification Engine: Send Alerts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": { "Execute Workflow Trigger": { "main": [[{ "node": "Notification Engine: Send Alerts", "type": "main", "index": 0 }]] } },
+  "active": false,
+  "settings": { "executionOrder": "v1", "callerPolicy": "any" },
+  "versionId": "agent-notification-engine-v1-0-0",
+  "meta": { "instanceId": "placeholder-replace-after-import" },
+  "id": "agent-notification-engine-v1",
+  "tags": [{ "name": "agent" }, { "name": "notification" }, { "name": "placeholder" }]
+}

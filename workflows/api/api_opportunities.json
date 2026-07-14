@@ -1,0 +1,74 @@
+{
+  "name": "\ud83d\udce1 API: Opportunities Feed",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "api/v1/opportunities",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "api-opp-001",
+      "name": "Webhook (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "webhookId": "api-opportunities"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $input.first().json.headers;\nconst query = $input.first().json.query;\nconst token = headers.authorization || '';\n\nif (token !== `Bearer ${$env.API_BEARER_TOKEN}`) {\n  throw new Error('401 Unauthorized: Invalid Bearer Token');\n}\n\nconst userId = headers['x-user-id'] || '11111111-1111-1111-1111-111111111111';\nconst limit = query.limit ? parseInt(query.limit) : 20;\nconst offset = query.offset ? parseInt(query.offset) : 0;\nconst filter = query.filter || 'ALL'; // ALL, HIGH_PRIORITY\n\nreturn [{ json: { user_id: userId, limit, offset, filter } }];"
+      },
+      "id": "api-opp-002",
+      "name": "Auth & Params",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT j.*, a.status as app_status \nFROM jobs j \nLEFT JOIN applications a ON j.job_id = a.job_id AND a.user_id = $1 \nWHERE ($4 = 'ALL' OR j.classification = $4)\nORDER BY j.match_score DESC \nLIMIT $2 OFFSET $3;",
+        "options": {
+          "queryParameters": "={{ $json.user_id }}, {{ $json.limit }}, {{ $json.offset }}, {{ $json.filter }}"
+        }
+      },
+      "id": "api-opp-003",
+      "name": "DB: Fetch Jobs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [400, 300],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn [{\n  json: {\n    status: 'success',\n    count: items.length,\n    data: items.map(i => i.json)\n  }\n}];"
+      },
+      "id": "api-opp-004",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    }
+  ],
+  "connections": {
+    "Webhook (GET)": {
+      "main": [[{ "node": "Auth & Params", "type": "main", "index": 0 }]]
+    },
+    "Auth & Params": {
+      "main": [[{ "node": "DB: Fetch Jobs", "type": "main", "index": 0 }]]
+    },
+    "DB: Fetch Jobs": {
+      "main": [[{ "node": "Format Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "api-opportunities-v1",
+  "id": "api-opportunities",
+  "tags": [{ "name": "api" }, { "name": "dashboard" }]
+}

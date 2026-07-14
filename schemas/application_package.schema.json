@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "application_package.schema.json",
+  "title": "Application Package",
+  "description": "The complete generated application package including priority and documents",
+  "type": "object",
+  "required": [
+    "priority_score",
+    "priority_level",
+    "priority_explanation",
+    "materials",
+    "status"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "priority_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "priority_level": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"] },
+    "priority_explanation": { "type": "string" },
+    "status": { "type": "string", "enum": ["PREPARED", "DUPLICATE", "FAILED"] },
+    "materials": {
+      "type": "object",
+      "required": ["cover_letter", "outreach"],
+      "properties": {
+        "cover_letter": { "type": "string" },
+        "outreach": {
+          "type": "object",
+          "required": ["linkedin_message", "email_draft", "follow_up_message"],
+          "properties": {
+            "linkedin_message": { "type": "string" },
+            "email_draft": {
+              "type": "object",
+              "properties": {
+                "subject": { "type": "string" },
+                "body": { "type": "string" }
+              }
+            },
+            "follow_up_message": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,147 @@
+{
+  "name": "\ud83d\udee1\ufe0f Agent: Job Quality Engine v1.0.0",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "jq-001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nif (!ctx.results?.opportunities) throw new Error('Missing opportunities from Phase 4');\n\n// Fan out opportunities for parallel quality checks\nreturn ctx.results.opportunities.map(job => ({\n  json: { job, ctx }\n}));"
+      },
+      "id": "jq-002",
+      "name": "Fan Out Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "agent-duplicate-detection",
+        "mode": "wait",
+        "options": {},
+        "input": "={\n  \"job\": {{ JSON.stringify($json.job) }}\n}"
+      },
+      "id": "jq-003",
+      "name": "Advanced Dedup",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "method": "HEAD",
+        "url": "={{ $json.apply_url }}",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "timeout": 5000
+        }
+      },
+      "id": "jq-004",
+      "name": "Link Validation (HTTP HEAD)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [600, 100],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $('Advanced Dedup').item.json;\nconst httpRes = $input.first().json;\n\njob.quality_report = job.quality_report || {};\n\nif (httpRes.error) {\n  // If timeout or 403 (Cloudflare block), mark UNVERIFIED instead of BROKEN to be safe\n  if (httpRes.error.code === 'ECONNABORTED' || httpRes.error.status === 403) {\n    job.quality_report.link_status = 'UNVERIFIED';\n  } else {\n    job.quality_report.link_status = 'BROKEN';\n  }\n} else {\n  job.quality_report.link_status = 'VALID';\n}\n\nreturn [{ json: { job } }];"
+      },
+      "id": "jq-005",
+      "name": "Evaluate Link",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "agent-ghost-job-detection",
+        "mode": "wait",
+        "options": {},
+        "input": "={\n  \"job\": {{ JSON.stringify($json.job) }}\n}"
+      },
+      "id": "jq-006",
+      "name": "Fraud & Ghost Detection",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $input.first().json;\nconst qr = job.quality_report || {};\n\n// Base classification on strict rules\nlet classification = 'PENDING';\n\nif (job.is_duplicate) {\n  classification = 'REJECT';\n  qr.reject_reason = 'Duplicate';\n} else if (qr.link_status === 'BROKEN') {\n  classification = 'REJECT';\n  qr.reject_reason = 'Broken Apply Link';\n} else if (qr.scam_risk > 60) {\n  classification = 'REJECT';\n  qr.reject_reason = 'High Scam Risk';\n} else if (qr.ghost_probability > 75) {\n  classification = 'LOW_PRIORITY';\n  qr.reject_reason = 'Likely Ghost Job';\n} else {\n  // It's clean. Classify by match score from Phase 4\n  const match = job.match_score || 0;\n  if (match >= 85) classification = 'APPLY_IMMEDIATELY';\n  else if (match >= 70) classification = 'HIGH_PRIORITY';\n  else if (match >= 50) classification = 'GOOD_MATCH';\n  else classification = 'LOW_PRIORITY';\n}\n\nqr.classification = classification;\njob.quality_report = qr;\n\nreturn [{ json: job }];"
+      },
+      "id": "jq-007",
+      "name": "Classify Opportunity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE jobs SET \n  ghost_probability = $1, \n  scam_risk = $2, \n  link_status = $3, \n  classification = $4,\n  quality_report = $5,\n  verified_at = NOW()\nWHERE dedup_hash = $6;",
+        "options": {
+          "queryParameters": "={{ $json.quality_report.ghost_probability }}, {{ $json.quality_report.scam_risk }}, {{ $json.quality_report.link_status }}, {{ $json.quality_report.classification }}, {{ JSON.stringify($json.quality_report) }}, {{ $json.dedup_hash }}"
+        }
+      },
+      "id": "jq-008",
+      "name": "DB: Update Job Quality",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1400, 100],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      },
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst ctx = $('Fan Out Jobs').first().json.ctx;\n\nconst validJobs = [];\nlet rejectedCount = 0;\n\nallItems.forEach(item => {\n  const job = item.json;\n  if (job.quality_report.classification === 'REJECT' || job.quality_report.classification === 'LOW_PRIORITY') {\n    rejectedCount++;\n  } else {\n    validJobs.push(job);\n  }\n});\n\n// Rebuild Context\nconst newCtx = { ...ctx };\nnewCtx.results.opportunities = validJobs; // Only keep the clean ones for ATS\nnewCtx.metadata = newCtx.metadata || {};\nnewCtx.metadata.quality_filtered = rejectedCount;\nnewCtx.agents_completed = [...(newCtx.agents_completed || []), 'job_quality'];\n\nreturn [{ json: newCtx }];"
+      },
+      "id": "jq-009",
+      "name": "Filter & Rebuild Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1600, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Fan Out Jobs", "type": "main", "index": 0 }]]
+    },
+    "Fan Out Jobs": {
+      "main": [[{ "node": "Advanced Dedup", "type": "main", "index": 0 }]]
+    },
+    "Advanced Dedup": {
+      "main": [[{ "node": "Link Validation (HTTP HEAD)", "type": "main", "index": 0 }]]
+    },
+    "Link Validation (HTTP HEAD)": {
+      "main": [[{ "node": "Evaluate Link", "type": "main", "index": 0 }]]
+    },
+    "Evaluate Link": {
+      "main": [[{ "node": "Fraud & Ghost Detection", "type": "main", "index": 0 }]]
+    },
+    "Fraud & Ghost Detection": {
+      "main": [[{ "node": "Classify Opportunity", "type": "main", "index": 0 }]]
+    },
+    "Classify Opportunity": {
+      "main": [
+        [{ "node": "DB: Update Job Quality", "type": "main", "index": 0 }],
+        [{ "node": "Filter & Rebuild Context", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "agent-job-quality-v2",
+  "id": "agent-job-quality",
+  "tags": [{ "name": "agent" }, { "name": "quality" }]
+}

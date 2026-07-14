@@ -1,0 +1,81 @@
+{
+  "name": "\ud83d\udd27 Utility: Cover Letter Generator",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "cl-001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst prompt = `Write a cover letter. NEVER hallucinate facts.\\n\\nJob Title: ${input.job.title}\\nCompany Name: ${input.job.company_name}\\nDescription: ${input.job.description || ''}\\n\\nCandidate Resume Data:\\n${JSON.stringify(input.tailored_resume)}`;\n\nreturn [{\n  json: {\n    job_id: input.job.job_id || input.job.dedup_hash,\n    prompt,\n    model: $env.MODEL_COVER_LETTER || 'anthropic/claude-haiku-3'\n  }\n}];"
+      },
+      "id": "cl-002",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OPENROUTER_BASE_URL }}/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENROUTER_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "={{ $json.model }}" },
+            { "name": "temperature", "value": "0.3" },
+            { "name": "response_format", "value": "{\"type\":\"json_object\"}" }
+          ]
+        },
+        "options": {
+          "body": "={\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a Career Coach. Return JSON with 'cover_letter'. NEVER fabricate experience or metrics. Mention the company and role in the opening.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt) }}\n    }\n  ]\n}"
+        }
+      },
+      "id": "cl-003",
+      "name": "LLM: Generate Cover Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [400, 300],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Build Prompt').item.json;\nconst llmRes = $input.first().json;\n\nlet coverLetter = 'Generation failed.';\n\ntry {\n  if (llmRes.choices && llmRes.choices.length > 0) {\n    const parsed = JSON.parse(llmRes.choices[0].message.content);\n    coverLetter = parsed.cover_letter || coverLetter;\n  }\n} catch (e) {}\n\nreturn [{\n  json: {\n    job_id: req.job_id,\n    cover_letter: coverLetter\n  }\n}];"
+      },
+      "id": "cl-004",
+      "name": "Parse Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Build Prompt", "type": "main", "index": 0 }]]
+    },
+    "Build Prompt": {
+      "main": [[{ "node": "LLM: Generate Cover Letter", "type": "main", "index": 0 }]]
+    },
+    "LLM: Generate Cover Letter": {
+      "main": [[{ "node": "Parse Result", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "util-cover-letter-v1",
+  "id": "util-cover-letter",
+  "tags": [{ "name": "utility" }, { "name": "application" }]
+}

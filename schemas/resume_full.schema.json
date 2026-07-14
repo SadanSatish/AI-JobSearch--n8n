@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "resume_full.schema.json",
+  "title": "Structured Full Resume",
+  "description": "The complete structured output from the Resume Intelligence Agent. Replaces resume_profile.schema.json.",
+  "type": "object",
+  "required": [
+    "resume_id",
+    "personal_info",
+    "summary",
+    "experience",
+    "education",
+    "projects",
+    "skills_matrix",
+    "certifications",
+    "languages",
+    "career_profile",
+    "quality_report",
+    "metadata"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "resume_id": {
+      "type": "string",
+      "description": "UUID of the resume record"
+    },
+    "personal_info": {
+      "type": "object",
+      "required": ["full_name"],
+      "properties": {
+        "full_name": { "type": "string" },
+        "email":     { "type": ["string", "null"], "format": "email" },
+        "phone":     { "type": ["string", "null"] },
+        "location":  { "type": ["string", "null"] },
+        "linkedin":  { "type": ["string", "null"] },
+        "github":    { "type": ["string", "null"] },
+        "portfolio": { "type": ["string", "null"] }
+      }
+    },
+    "summary": {
+      "type": ["string", "null"],
+      "description": "Professional summary paragraph"
+    },
+    "experience": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["company", "role", "start_date", "is_current"],
+        "properties": {
+          "company":          { "type": "string" },
+          "role":             { "type": "string" },
+          "start_date":       { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}$|^\\d{4}$" },
+          "end_date":         { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}$|^\\d{4}$" },
+          "is_current":       { "type": "boolean" },
+          "location":         { "type": ["string", "null"] },
+          "duration_months":  { "type": ["integer", "null"] },
+          "description":      { "type": ["string", "null"] },
+          "achievements":     { "type": "array", "items": { "type": "string" } },
+          "technologies_raw": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "education": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["institution"],
+        "properties": {
+          "institution":     { "type": "string" },
+          "degree":          { "type": ["string", "null"] },
+          "field_of_study":  { "type": ["string", "null"] },
+          "start_date":      { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}$|^\\d{4}$" },
+          "end_date":        { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}$|^\\d{4}$" },
+          "is_current":      { "type": "boolean" },
+          "gpa_raw":         { "type": ["string", "null"] },
+          "gpa_normalized":  { "type": ["number", "null"] },
+          "achievements":    { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name":             { "type": "string" },
+          "description":      { "type": ["string", "null"] },
+          "role":             { "type": ["string", "null"] },
+          "start_date":       { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}$|^\\d{4}$" },
+          "end_date":         { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}$|^\\d{4}$" },
+          "link":             { "type": ["string", "null"] },
+          "technologies_raw": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "skills_matrix": {
+      "type": "array",
+      "items": { "$ref": "skill_normalized.schema.json" }
+    },
+    "certifications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name":        { "type": "string" },
+          "issuer":      { "type": ["string", "null"] },
+          "date":        { "type": ["string", "null"] },
+          "url":         { "type": ["string", "null"] }
+        }
+      }
+    },
+    "languages": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "career_profile": {
+      "$ref": "career_profile.schema.json"
+    },
+    "quality_report": {
+      "$ref": "resume_quality_report.schema.json"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["extracted_at", "parse_confidence", "word_count", "extraction_model"],
+      "properties": {
+        "extracted_at":     { "type": "string", "format": "date-time" },
+        "parse_confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "word_count":       { "type": "integer" },
+        "extraction_model": { "type": "string" },
+        "text_hash":        { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ats_evaluation_report.schema.json",
+  "title": "ATS Evaluation Report",
+  "description": "Comprehensive ATS matching score, gap analysis, and optimization recommendations",
+  "type": "object",
+  "required": [
+    "overall_score",
+    "section_scores",
+    "hiring_readiness",
+    "gap_analysis",
+    "optimization_recommendations",
+    "strategy"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "overall_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "section_scores": {
+      "type": "object",
+      "required": ["skills", "experience", "keywords", "semantic"],
+      "properties": {
+        "skills": { "type": "integer" },
+        "experience": { "type": "integer" },
+        "keywords": { "type": "integer" },
+        "semantic": { "type": ["integer", "null"] },
+        "semantic_fallback_used": { "type": "boolean", "default": false }
+      }
+    },
+    "hiring_readiness": {
+      "type": "string",
+      "enum": ["HIGH", "MEDIUM", "LOW"]
+    },
+    "gap_analysis": {
+      "type": "object",
+      "required": ["missing_mandatory_skills", "missing_preferred_skills"],
+      "properties": {
+        "missing_mandatory_skills": { "type": "array", "items": { "type": "string" } },
+        "missing_preferred_skills": { "type": "array", "items": { "type": "string" } },
+        "experience_gap_years": { "type": "number" }
+      }
+    },
+    "optimization_recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["priority", "advice"],
+        "properties": {
+          "priority": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] },
+          "advice": { "type": "string" },
+          "target_section": { "type": "string", "enum": ["summary", "skills", "experience", "projects", "education"] }
+        }
+      }
+    },
+    "strategy": {
+      "type": "string",
+      "enum": ["KEEP_CURRENT", "MINOR_CHANGES", "MAJOR_CHANGES", "CREATE_NEW"]
+    }
+  }
+}

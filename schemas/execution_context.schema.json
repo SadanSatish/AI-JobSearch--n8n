@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "execution_context.schema.json",
+  "title": "ExecutionContext",
+  "description": "The canonical shared state object passed through every agent in the pipeline. Every agent receives this object and returns it updated.",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["execution_id", "user_id", "resume_id", "pipeline_version", "started_at"],
+  "additionalProperties": false,
+  "properties": {
+    "execution_id": {
+      "type": "string",
+      "description": "Unique identifier for this pipeline run. Format: exec_{timestamp}_{random}"
+    },
+    "pipeline_version": {
+      "type": "string",
+      "description": "Semver version of the pipeline that processed this execution",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO8601 timestamp when the pipeline was initiated"
+    },
+    "ended_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "UUID of the authenticated user"
+    },
+    "resume_id": {
+      "type": "string",
+      "description": "UUID of the resume record being processed"
+    },
+    "resume_text": {
+      "type": ["string", "null"],
+      "description": "Optional raw resume text if passed directly in the request"
+    },
+    "preferences": {
+      "type": "object",
+      "description": "User search preferences — applied throughout the pipeline",
+      "properties": {
+        "target_roles":        { "type": "array", "items": { "type": "string" } },
+        "target_industries":   { "type": "array", "items": { "type": "string" } },
+        "preferred_locations": { "type": "array", "items": { "type": "string" } },
+        "remote_preference":   { "type": "string", "enum": ["remote", "hybrid", "onsite", "any"] },
+        "salary_min":          { "type": "number", "minimum": 0 },
+        "max_jobs":            { "type": "integer", "minimum": 1, "maximum": 200 },
+        "cover_letter_top_n":  { "type": "integer", "minimum": 1, "maximum": 20 },
+        "posted_within_days":  { "type": "integer", "minimum": 1, "maximum": 90 }
+      }
+    },
+    "resume_from_agent": {
+      "type": ["string", "null"],
+      "description": "If set, the pipeline resumes from this agent (skipping earlier completed agents)"
+    },
+    "agents_completed": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of agent IDs that have successfully completed in this execution"
+    },
+    "agents_failed": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "agents_skipped": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "results": {
+      "type": "object",
+      "description": "Accumulated results from all completed agents",
+      "properties": {
+        "resume_profile":        { "type": ["object", "null"] },
+        "career_goals":          { "type": ["object", "null"] },
+        "jobs_raw":              { "type": "array" },
+        "internships_raw":       { "type": "array" },
+        "jobs_merged":           { "type": "array" },
+        "jobs_quality_scored":   { "type": "array" },
+        "jobs_ghost_filtered":   { "type": "array" },
+        "jobs_scam_filtered":    { "type": "array" },
+        "jobs_deduplicated":     { "type": "array" },
+        "companies":             { "type": "object" },
+        "ats_reports":           { "type": "array" },
+        "resume_versions":       { "type": "array" },
+        "cover_letters":         { "type": "array" },
+        "application_packets":   { "type": "array" }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "description": "Aggregate resource consumption metrics",
+      "properties": {
+        "total_tokens_input":  { "type": "integer", "minimum": 0 },
+        "total_tokens_output": { "type": "integer", "minimum": 0 },
+        "total_tokens_used":   { "type": "integer", "minimum": 0 },
+        "total_cost_usd":      { "type": "number",  "minimum": 0 },
+        "total_duration_ms":   { "type": "integer", "minimum": 0 },
+        "wall_time_ms":        { "type": "integer", "minimum": 0 },
+        "agent_timings":       { "type": "object" }
+      }
+    },
+    "pipeline_status": {
+      "type": "string",
+      "enum": ["running", "success", "partial_success", "failed"]
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agent":     { "type": "string" },
+          "error":     { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agent":     { "type": "string" },
+          "warning":   { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "optimization_changelog.schema.json",
+  "title": "Optimization Change Log",
+  "description": "Structured tracking of modifications made by the Resume Optimizer",
+  "type": "object",
+  "required": ["added_keywords", "rewritten_sections", "summary_of_changes"],
+  "additionalProperties": false,
+  "properties": {
+    "added_keywords": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "rewritten_sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["section", "original", "updated"],
+        "properties": {
+          "section": { "type": "string", "enum": ["summary", "experience", "projects", "skills"] },
+          "original": { "type": "string" },
+          "updated": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "summary_of_changes": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "name": "\ud83d\udee1\ufe0f Agent: Resume Refinement Engine v1.0.0",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "arr-001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nif (!ctx.results?.opportunities || ctx.results.opportunities.length === 0) throw new Error('No jobs available to optimize for');\nif (!ctx.results?.resume_profile) throw new Error('Missing original resume');\n\n// We will optimize ONLY for the TOP 1 job by default as per user instruction.\nconst limit = $env.OPTIMIZATION_LIMIT ? parseInt($env.OPTIMIZATION_LIMIT) : 1;\nconst jobsToOptimize = ctx.results.opportunities.slice(0, limit);\n\nreturn jobsToOptimize.map(job => ({\n  json: { job, ctx }\n}));"
+      },
+      "id": "arr-002",
+      "name": "Slice Top Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "util-resume-optimizer",
+        "mode": "wait",
+        "options": {},
+        "input": "={\n  \"original_resume\": {{ JSON.stringify($json.ctx.results.resume_profile) }},\n  \"job\": {{ JSON.stringify($json.job) }},\n  \"ats\": {{ JSON.stringify($json.job.ats_evaluation) }}\n}"
+      },
+      "id": "arr-003",
+      "name": "Loop Iteration 1: Optimize",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "value2": "OPTIMIZED"
+            }
+          ]
+        }
+      },
+      "id": "arr-004",
+      "name": "Validation Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const loopRes = $input.first().json;\nconst sliced = $('Slice Top Jobs').item.json;\n\n// Prepare inputs for util-ats-scoring using the TAILORED resume this time\nconst tailoredCtx = JSON.parse(JSON.stringify(sliced.ctx));\ntailoredCtx.results.resume_profile = loopRes.tailored_resume; // Inject fake context for scoring\n\nreturn [{\n  json: {\n    job: sliced.job,\n    jd_intelligence: sliced.job.jd_intelligence,\n    ctx: tailoredCtx\n  }\n}];"
+      },
+      "id": "arr-005",
+      "name": "Prepare Re-Scoring",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": "util-ats-scoring",
+        "mode": "wait",
+        "options": {},
+        "input": "={{ JSON.stringify($json) }}"
+      },
+      "id": "arr-006",
+      "name": "Re-Calculate ATS",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const originalJob = $('Slice Top Jobs').item.json.job;\nconst loopRes = $('Loop Iteration 1: Optimize').item.json;\nconst newAtsRes = $input.first().json.ats_evaluation;\n\nconst oldScore = originalJob.ats_evaluation.overall_score;\nconst newScore = newAtsRes.overall_score;\n\nlet finalStatus = loopRes.status;\nif (newScore < oldScore) {\n  finalStatus = 'REJECTED'; // Made it worse\n}\n\nreturn [{\n  json: {\n    job: originalJob,\n    tailored_resume: finalStatus === 'OPTIMIZED' ? loopRes.tailored_resume : $('Slice Top Jobs').item.json.ctx.results.resume_profile,\n    change_log: finalStatus === 'OPTIMIZED' ? loopRes.change_log : { summary_of_changes: 'Rejected due to lower score' },\n    validation_report: loopRes.validation_report,\n    status: finalStatus,\n    ats_score_before: oldScore,\n    ats_score_after: finalStatus === 'OPTIMIZED' ? newScore : oldScore\n  }\n}];"
+      },
+      "id": "arr-007",
+      "name": "Evaluate Improvement",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO resume_versions (user_id, original_resume_id, target_job_id, status, tailored_resume_data, change_log, validation_report, ats_score_before, ats_score_after)\nVALUES ($1, $2, (SELECT job_id FROM jobs WHERE dedup_hash = $3 LIMIT 1), $4, $5, $6, $7, $8, $9);",
+        "options": {
+          "queryParameters": "={{ $('Slice Top Jobs').item.json.ctx.user_id }}, {{ $('Slice Top Jobs').item.json.ctx.resume_id }}, {{ $json.job.dedup_hash }}, {{ $json.status }}, {{ JSON.stringify($json.tailored_resume) }}, {{ JSON.stringify($json.change_log) }}, {{ JSON.stringify($json.validation_report) }}, {{ $json.ats_score_before }}, {{ $json.ats_score_after }}"
+        }
+      },
+      "id": "arr-008",
+      "name": "DB: Insert Version",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1400, 300],
+      "credentials": {
+        "postgres": {
+          "id": "JSP Application Database",
+          "name": "JSP Application Database"
+        }
+      },
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst ctx = $('Slice Top Jobs').first().json.ctx;\n\n// Attach the optimized resumes to the context\nctx.results.resume_versions = allItems.map(i => i.json);\nctx.agents_completed = [...(ctx.agents_completed || []), 'resume_refinement'];\n\nreturn [{ json: ctx }];"
+      },
+      "id": "arr-009",
+      "name": "Rebuild Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1600, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const loopRes = $input.first().json;\nconst sliced = $('Slice Top Jobs').item.json;\n\nreturn [{\n  json: {\n    job: sliced.job,\n    tailored_resume: sliced.ctx.results.resume_profile, // Fallback to original\n    change_log: { summary_of_changes: 'Validation Failed: ' + loopRes.validation_report.reason },\n    validation_report: loopRes.validation_report,\n    status: 'VALIDATION_FAILED',\n    ats_score_before: sliced.job.ats_evaluation.overall_score,\n    ats_score_after: sliced.job.ats_evaluation.overall_score\n  }\n}];"
+      },
+      "id": "arr-010",
+      "name": "Handle Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 400]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Slice Top Jobs", "type": "main", "index": 0 }]]
+    },
+    "Slice Top Jobs": {
+      "main": [[{ "node": "Loop Iteration 1: Optimize", "type": "main", "index": 0 }]]
+    },
+    "Loop Iteration 1: Optimize": {
+      "main": [[{ "node": "Validation Passed?", "type": "main", "index": 0 }]]
+    },
+    "Validation Passed?": {
+      "main": [
+        [{ "node": "Prepare Re-Scoring", "type": "main", "index": 0 }],
+        [{ "node": "Handle Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Re-Scoring": {
+      "main": [[{ "node": "Re-Calculate ATS", "type": "main", "index": 0 }]]
+    },
+    "Re-Calculate ATS": {
+      "main": [[{ "node": "Evaluate Improvement", "type": "main", "index": 0 }]]
+    },
+    "Evaluate Improvement": {
+      "main": [[{ "node": "DB: Insert Version", "type": "main", "index": 0 }]]
+    },
+    "Handle Failure": {
+      "main": [[{ "node": "DB: Insert Version", "type": "main", "index": 0 }]]
+    },
+    "DB: Insert Version": {
+      "main": [[{ "node": "Rebuild Context", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "agent-resume-refinement-v2",
+  "id": "agent-resume-refinement",
+  "tags": [{ "name": "agent" }, { "name": "resume" }]
+}

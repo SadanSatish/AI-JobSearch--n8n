@@ -1,0 +1,23 @@
+{
+  "name": "\ud83d\udee0 Utility: Cache Write v1.0.0",
+  "nodes": [
+    { "parameters": {}, "id": "cw-0001", "name": "Execute Workflow Trigger", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1, "position": [200, 300] },
+    {
+      "parameters": {
+        "jsCode": "// UTILITY: Cache Write v1.0.0\n// Reusable utility called by any agent to write to Redis cache.\n// INPUT:  { cache_key: string, data: any, ttl_seconds: number }\n// OUTPUT: { written: boolean, cache_key: string, ttl_seconds: number }\n//\n// PLACEHOLDER: Logs the write intent but does nothing.\n// In Phase 4, this will call Redis SETEX via n8n Redis node.\n\nconst input = $input.first().json;\nconst { cache_key, data, ttl_seconds = 3600 } = input;\n\nif (!cache_key) throw new Error('[util_cache_write] Missing required field: cache_key');\nif (data === undefined) throw new Error('[util_cache_write] Missing required field: data');\n\nconsole.log(`[util_cache_write] KEY=${cache_key} TTL=${ttl_seconds}s → WRITE (placeholder, not persisted)`);\n\nreturn [{\n  json: {\n    written:     false,\n    cache_key,\n    ttl_seconds,\n    source:      'placeholder'\n  }\n}];"
+      },
+      "id": "cw-0002",
+      "name": "Cache Write: Set Redis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": { "Execute Workflow Trigger": { "main": [[{ "node": "Cache Write: Set Redis", "type": "main", "index": 0 }]] } },
+  "active": false,
+  "settings": { "executionOrder": "v1", "callerPolicy": "any" },
+  "versionId": "util-cache-write-v1-0-0",
+  "meta": { "instanceId": "placeholder-replace-after-import" },
+  "id": "util-cache-write-v1",
+  "tags": [{ "name": "utility" }, { "name": "cache" }, { "name": "redis" }]
+}

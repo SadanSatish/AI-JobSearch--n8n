@@ -1,0 +1,80 @@
+{
+  "name": "\ud83d\udd27 Utility: Resume Optimizer",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "uro-001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst prompt = `Rewrite to maximize ATS without hallucinating.\\n\\nOriginal Resume:\\n${JSON.stringify(input.original_resume)}\\n\\nJob Description:\\n${input.job.title} - ${input.job.description || ''}\\n\\nMissing Keywords:\\n${input.ats.gap_analysis.missing_mandatory_skills.join(', ')}\\n\\nRecommendations:\\n${JSON.stringify(input.ats.optimization_recommendations)}`;\n\nreturn [{\n  json: {\n    input,\n    prompt,\n    model: $env.MODEL_RESUME_OPTIMIZATION || 'anthropic/claude-3.5-sonnet'\n  }\n}];"
+      },
+      "id": "uro-002",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OPENROUTER_BASE_URL }}/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENROUTER_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "={{ $json.model }}" },
+            { "name": "temperature", "value": "0.1" },
+            { "name": "response_format", "value": "{\"type\":\"json_object\"}" }
+          ]
+        },
+        "options": {
+          "body": "={\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a Resume Optimizer. Return JSON with 'tailored_resume' and 'change_log'. NEVER hallucinate employers, degrees, or projects.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt) }}\n    }\n  ]\n}"
+        }
+      },
+      "id": "uro-003",
+      "name": "LLM: Rewrite Resume",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [400, 300],
+      "retryOnFail": true,
+      "maxTries": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Build Prompt').item.json.input;\nconst original = req.original_resume;\nconst llmRes = $input.first().json;\n\nlet parsed;\ntry {\n  parsed = JSON.parse(llmRes.choices[0].message.content);\n} catch (e) {\n  throw new Error('LLM output was not valid JSON');\n}\n\nconst tailored = parsed.tailored_resume;\nlet status = 'OPTIMIZED';\nlet failReason = null;\n\n// SAFETY VALIDATION\n// 1. Check if experience count changed (hallucination)\nconst origExpCount = (original.experience || []).length;\nconst newExpCount = (tailored.experience || []).length;\nif (origExpCount !== newExpCount) {\n  status = 'VALIDATION_FAILED';\n  failReason = 'LLM altered the number of experience entries.';\n}\n\n// 2. Check if companies match\nif (status === 'OPTIMIZED') {\n  const origCompanies = (original.experience || []).map(e => e.company.toLowerCase());\n  const newCompanies = (tailored.experience || []).map(e => e.company.toLowerCase());\n  for (let i = 0; i < origCompanies.length; i++) {\n    if (origCompanies[i] !== newCompanies[i]) {\n      status = 'VALIDATION_FAILED';\n      failReason = `Company mismatch at index ${i}: ${origCompanies[i]} vs ${newCompanies[i]}`;\n      break;\n    }\n  }\n}\n\n// 3. Check Education\nif (status === 'OPTIMIZED') {\n  const origEduCount = (original.education || []).length;\n  const newEduCount = (tailored.education || []).length;\n  if (origEduCount !== newEduCount) {\n    status = 'VALIDATION_FAILED';\n    failReason = 'LLM altered education history.';\n  }\n}\n\nreturn [{\n  json: {\n    status,\n    validation_report: { passed: status === 'OPTIMIZED', reason: failReason },\n    tailored_resume: tailored,\n    change_log: parsed.change_log\n  }\n}];"
+      },
+      "id": "uro-004",
+      "name": "Safety Validation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Build Prompt", "type": "main", "index": 0 }]]
+    },
+    "Build Prompt": {
+      "main": [[{ "node": "LLM: Rewrite Resume", "type": "main", "index": 0 }]]
+    },
+    "LLM: Rewrite Resume": {
+      "main": [[{ "node": "Safety Validation", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "util-resume-optimizer-v1",
+  "id": "util-resume-optimizer",
+  "tags": [{ "name": "utility" }, { "name": "resume" }]
+}

@@ -1,0 +1,51 @@
+{
+  "version": "1.0.0",
+  "description": "Prompt template registry. Maps each agent to its active prompt version. To upgrade a prompt, update active_version and add the new file to prompts/<agent>/<version>.md",
+  "agents": {
+    "agent-resume-intelligence": {
+      "active_version": "1.0.0",
+      "versions": ["1.0.0"],
+      "file_pattern": "prompts/resume_intelligence/{version}.md"
+    },
+    "agent-career-goal": {
+      "active_version": "1.0.0",
+      "versions": ["1.0.0"],
+      "file_pattern": "prompts/career_goal/{version}.md"
+    },
+    "agent-job-quality": {
+      "active_version": "1.0.0",
+      "versions": ["1.0.0"],
+      "file_pattern": "prompts/job_quality/{version}.md"
+    },
+    "agent-ghost-detection": {
+      "active_version": "1.0.0",
+      "versions": ["1.0.0"],
+      "file_pattern": "prompts/ghost_detection/{version}.md"
+    },
+    "agent-scam-detection": {
+      "active_version": "1.0.0",
+      "versions": ["1.0.0"],
+      "file_pattern": "prompts/scam_detection/{version}.md"
+    },
+    "agent-company-analysis": {
+      "active_version": "1.0.0",
+      "versions": ["1.0.0"],
+      "file_pattern": "prompts/company_analysis/{version}.md"
+    },
+    "agent-ats-matching": {
+      "active_version": "1.0.0",
+      "versions": ["1.0.0"],
+      "file_pattern": "prompts/ats_matching/{version}.md"
+    },
+    "agent-resume-refinement": {
+      "active_version": "1.0.0",
+      "versions": ["1.0.0"],
+      "file_pattern": "prompts/resume_refinement/{version}.md"
+    },
+    "agent-cover-letter": {
+      "active_version": "1.0.0",
+      "versions": ["1.0.0"],
+      "file_pattern": "prompts/cover_letter/{version}.md"
+    }
+  }
+}

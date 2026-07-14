@@ -1,0 +1,23 @@
+{
+  "name": "\ud83c\udfe2 Agent: Company Analysis v1.0.0",
+  "nodes": [
+    { "parameters": {}, "id": "ca-0001", "name": "Execute Workflow Trigger", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1, "position": [200, 300] },
+    {
+      "parameters": {
+        "jsCode": "// AGENT: Company Analysis v1.0.0 — PLACEHOLDER\n// In Phase 4, this will:\n//  1. Extract unique company names from deduplicated listings\n//  2. Check PostgreSQL companies table cache (TTL: 72h)\n//  3. For uncached companies: query Clearbit / Proxycurl / SerpAPI\n//  4. Use Gemini Flash to analyze company data for red flags\n//  5. Cache results in Redis + PostgreSQL\n\nconst input = $input.first().json;\nconst ctx   = input.execution_context;\nif (!ctx) throw new Error('[company_analysis] Missing execution_context');\n\nconst started_at = Date.now();\nconst listings   = ctx.results.jobs_deduplicated || [];\nconst companies  = {};\n\nconsole.log(`[company_analysis] START | unique companies to analyze`);\n\n// Extract unique company names\nconst uniqueCompanies = [...new Set(listings.map(l => l.company).filter(Boolean))];\n\n// PLACEHOLDER: Return unknown profile for each company\nfor (const name of uniqueCompanies) {\n  companies[name] = {\n    name,\n    verified:          false,\n    size:              'unknown',\n    industry:          'unknown',\n    founded_year:      null,\n    website:           null,\n    glassdoor_rating:  null,\n    red_flags:         [],\n    data_source:       'placeholder',\n    last_verified_at:  new Date().toISOString()\n  };\n}\n\nctx.results.companies = companies;\nctx.agents_completed.push('company_analysis');\n\nconst duration_ms = Date.now() - started_at;\nconsole.log(`[company_analysis] COMPLETE (placeholder) | companies=${uniqueCompanies.length}`);\n\nreturn [{\n  json: {\n    execution_context: ctx,\n    companies,\n    total_analyzed: uniqueCompanies.length,\n    cache_hits:     0,\n    status:         'placeholder',\n    agent_meta: { agent_id: 'agent-company-analysis', agent_version: '1.0.0', execution_id: ctx.execution_id, model_used: null, tokens_total: 0, duration_ms, status: 'placeholder', error: null }\n  }\n}];"
+      },
+      "id": "ca-0002",
+      "name": "Company Analysis: Verify & Profile",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": { "Execute Workflow Trigger": { "main": [[{ "node": "Company Analysis: Verify & Profile", "type": "main", "index": 0 }]] } },
+  "active": false,
+  "settings": { "executionOrder": "v1", "callerPolicy": "any" },
+  "versionId": "agent-company-analysis-v1-0-0",
+  "meta": { "instanceId": "placeholder-replace-after-import" },
+  "id": "agent-company-analysis-v1",
+  "tags": [{ "name": "agent" }, { "name": "company" }, { "name": "placeholder" }]
+}

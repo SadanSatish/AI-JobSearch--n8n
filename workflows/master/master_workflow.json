@@ -1,0 +1,640 @@
+{
+  "name": "\ud83c\udfaf Master Workflow \u2014 Job Search Platform v1.0.0",
+  "nodes": [
+
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pipeline/run",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false,
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "00000000-0000-0000-0000-000000000001",
+      "name": "POST /pipeline/run",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [400, 100],
+      "webhookId": "jsp-pipeline-run-v1-webhook"
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Validate Incoming Request\n// Checks that all required fields are present before\n// the pipeline begins. Returns {valid, errors} object.\n// ============================================================\n\nconst body = $input.first().json;\n\nconst errors = [];\n\n// Required top-level fields\nif (!body.user_id)   errors.push('Missing required field: user_id');\nif (!body.resume_id) errors.push('Missing required field: resume_id');\n\n// Type validation\nif (body.user_id && typeof body.user_id !== 'string')\n  errors.push('user_id must be a string (UUID)');\nif (body.resume_id && typeof body.resume_id !== 'string')\n  errors.push('resume_id must be a string (UUID)');\n\n// Optional search preferences — validate if present\nif (body.preferences) {\n  const prefs = body.preferences;\n  const validRemote = ['remote', 'hybrid', 'onsite', 'any'];\n  if (prefs.remote_preference && !validRemote.includes(prefs.remote_preference)) {\n    errors.push(`preferences.remote_preference must be one of: ${validRemote.join(', ')}`);\n  }\n  if (prefs.salary_min !== undefined && typeof prefs.salary_min !== 'number') {\n    errors.push('preferences.salary_min must be a number');\n  }\n}\n\n// Resume safety — prevent oversized payloads\nif (body.resume_text && body.resume_text.length > 100000) {\n  errors.push('resume_text exceeds maximum length of 100,000 characters');\n}\n\nreturn [{\n  json: {\n    valid: errors.length === 0,\n    errors,\n    original_body: body\n  }\n}];"
+      },
+      "id": "00000000-0000-0000-0000-000000000002",
+      "name": "Validate Incoming Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 100]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-valid-input",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "00000000-0000-0000-0000-000000000003",
+      "name": "Is Input Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [920, 100]
+    },
+
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Bad Request', messages: $json.errors, code: 400 }) }}",
+        "options": { "responseCode": 400, "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] } }
+      },
+      "id": "00000000-0000-0000-0000-000000000004",
+      "name": "Respond: 400 Bad Request",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [920, 320]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Initialize Execution Context\n// Creates the canonical ExecutionContext object that flows\n// through every agent in the pipeline.\n// IMPORTANT: This context is the single source of truth.\n// Every agent reads from it and writes back to it.\n// ============================================================\n\nconst { v4: uuidv4 } = require('crypto');\nconst body = $input.first().json.original_body;\n\n// Generate a unique execution ID for full pipeline tracing\nconst execution_id = `exec_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;\nconst started_at = new Date().toISOString();\n\n// Build the canonical Execution Context\nconst execution_context = {\n  // Identity\n  execution_id,\n  pipeline_version: $env.PIPELINE_VERSION || '1.0.0',\n  started_at,\n\n  // Request payload\n  user_id: body.user_id,\n  resume_id: body.resume_id,\n\n  // Optional resume text (if passed directly)\n  resume_text: body.resume_text || null,\n\n  // User preferences (with defaults)\n  preferences: {\n    target_roles:       body.preferences?.target_roles       || [],\n    target_industries:  body.preferences?.target_industries  || [],\n    preferred_locations:body.preferences?.preferred_locations|| [],\n    remote_preference:  body.preferences?.remote_preference  || 'any',\n    salary_min:         body.preferences?.salary_min         || 0,\n    max_jobs:           body.preferences?.max_jobs           || parseInt($env.PIPELINE_MAX_JOBS) || 20,\n    cover_letter_top_n: body.preferences?.cover_letter_top_n || parseInt($env.PIPELINE_COVER_LETTER_TOP_N) || 5,\n    posted_within_days: body.preferences?.posted_within_days || 7\n  },\n\n  // Resume from a checkpoint (used for partial recovery)\n  resume_from_agent: body.resume_from_agent || null,\n\n  // Pipeline tracking\n  agents_completed: [],\n  agents_failed: [],\n  agents_skipped: [],\n\n  // Accumulated results (updated after each agent completes)\n  results: {\n    resume_profile:       null,\n    career_goals:         null,\n    jobs_raw:             [],\n    internships_raw:      [],\n    jobs_merged:          [],\n    jobs_quality_scored:  [],\n    jobs_ghost_filtered:  [],\n    jobs_scam_filtered:   [],\n    jobs_deduplicated:    [],\n    companies:            {},\n    ats_reports:          [],\n    resume_versions:      [],\n    cover_letters:        [],\n    application_packets:  []\n  },\n\n  // Resource consumption tracking\n  meta: {\n    total_tokens_input:  0,\n    total_tokens_output: 0,\n    total_tokens_used:   0,\n    total_cost_usd:      0,\n    total_duration_ms:   0,\n    agent_timings:       {}\n  },\n\n  // Error and warning log\n  errors:   [],\n  warnings: []\n};\n\nconsole.log(`[MASTER] Pipeline started | execution_id=${execution_id} | user_id=${body.user_id} | resume_id=${body.resume_id}`);\n\nreturn [{ json: { execution_context } }];"
+      },
+      "id": "00000000-0000-0000-0000-000000000005",
+      "name": "Initialize Execution Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 100]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83e\udde0 Agent: Resume Intelligence v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000006",
+      "name": "\ud83e\udde0 Resume Intelligence",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1440, 100]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Absorb Resume Intelligence Output\n// Merges agent output back into the execution context\n// and handles partial failure gracefully.\n// ============================================================\n\nconst agentOutput = $input.first().json;\nconst ctx = agentOutput.execution_context;\nconst meta = agentOutput.agent_meta || {};\n\n// Track timing\nif (meta.duration_ms) {\n  ctx.meta.agent_timings['resume_intelligence'] = meta.duration_ms;\n  ctx.meta.total_duration_ms += meta.duration_ms;\n}\n\n// Track token usage\nif (meta.tokens_total) {\n  ctx.meta.total_tokens_used += meta.tokens_total;\n  ctx.meta.total_tokens_input  += (meta.tokens_input  || 0);\n  ctx.meta.total_tokens_output += (meta.tokens_output || 0);\n}\n\n// Absorb result or log failure\nif (agentOutput.status === 'success' || agentOutput.status === 'partial') {\n  ctx.results.resume_profile = agentOutput.resume_profile;\n  ctx.agents_completed.push('resume_intelligence');\n  console.log(`[MASTER] resume_intelligence completed | score=${agentOutput.resume_profile?.parse_confidence || 0}%`);\n} else {\n  ctx.agents_failed.push('resume_intelligence');\n  ctx.errors.push({ agent: 'resume_intelligence', error: agentOutput.error || 'Unknown error', timestamp: new Date().toISOString() });\n  console.error(`[MASTER] resume_intelligence FAILED | error=${agentOutput.error}`);\n}\n\nreturn [{ json: { execution_context: ctx, resume_failed: !ctx.results.resume_profile } }];"
+      },
+      "id": "00000000-0000-0000-0000-000000000007",
+      "name": "Absorb: Resume Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1700, 100]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-resume-ok",
+              "leftValue": "={{ $json.resume_failed }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "false" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "00000000-0000-0000-0000-000000000008",
+      "name": "Did Resume Parse?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1960, 100]
+    },
+
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Resume parsing failed. Please check the resume file and try again.', code: 422, execution_id: $json.execution_context.execution_id }) }}",
+        "options": { "responseCode": 422 }
+      },
+      "id": "00000000-0000-0000-0000-000000000009",
+      "name": "Respond: 422 Resume Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1960, 320]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83c\udfaf Agent: Career Goal v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000010",
+      "name": "\ud83c\udfaf Career Goal",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [2220, 100]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Absorb Career Goal Output\n// ============================================================\nconst agentOutput = $input.first().json;\nconst ctx = agentOutput.execution_context;\nconst meta = agentOutput.agent_meta || {};\n\nif (meta.duration_ms) { ctx.meta.agent_timings['career_goal'] = meta.duration_ms; ctx.meta.total_duration_ms += meta.duration_ms; }\nif (meta.tokens_total) { ctx.meta.total_tokens_used += meta.tokens_total; }\n\nif (agentOutput.status !== 'failed') {\n  ctx.results.career_goals = agentOutput.career_goals;\n  ctx.agents_completed.push('career_goal');\n  console.log(`[MASTER] career_goal completed | primary_role=${agentOutput.career_goals?.primary_role}`);\n} else {\n  ctx.agents_failed.push('career_goal');\n  ctx.warnings.push({ agent: 'career_goal', warning: 'Career goal detection failed — using user preferences as fallback', timestamp: new Date().toISOString() });\n  // FALLBACK: Use user preferences directly as career goals\n  ctx.results.career_goals = {\n    primary_role: ctx.preferences.target_roles[0] || 'Software Engineer',\n    secondary_roles: ctx.preferences.target_roles.slice(1),\n    target_industries: ctx.preferences.target_industries,\n    search_keywords: ctx.preferences.target_roles,\n    excluded_keywords: [],\n    location_strategy: { preferred: ctx.preferences.preferred_locations, remote: ctx.preferences.remote_preference }\n  };\n}\n\nreturn [{ json: { execution_context: ctx } }];"
+      },
+      "id": "00000000-0000-0000-0000-000000000011",
+      "name": "Absorb: Career Goals",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2480, 100]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83d\udd0d Agent: Job Search v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000012",
+      "name": "\ud83d\udd0d Job Search",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [2740, 0]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83c\udf93 Agent: Internship Search v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000013",
+      "name": "\ud83c\udf93 Internship Search",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [2740, 220]
+    },
+
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByIndex",
+        "options": {
+          "includeUnpaired": true
+        }
+      },
+      "id": "00000000-0000-0000-0000-000000000014",
+      "name": "Merge: Search Branches",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [3000, 100]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Merge & Deduplicate Raw Search Results\n// Combines job + internship results from both parallel\n// branches into a single deduplicated list.\n// ============================================================\n\nconst allInputs = $input.all();\n\n// Extract the two branches (job search + internship search)\nlet jobsCtx       = null;\nlet internshipsCtx = null;\nlet ctx            = null;\n\nfor (const item of allInputs) {\n  const d = item.json;\n  if (!ctx) ctx = d.execution_context;\n  if (d.search_type === 'jobs')        { jobsCtx       = d; }\n  if (d.search_type === 'internships') { internshipsCtx = d; }\n}\n\n// Use whichever context is latest (both should be same base)\nif (!ctx) ctx = allInputs[0]?.json?.execution_context;\n\n// Absorb job search results\nconst jobs = jobsCtx?.jobs || [];\nconst internships = internshipsCtx?.internships || [];\n\nif (jobsCtx) {\n  ctx.results.jobs_raw = jobs;\n  ctx.agents_completed.push('job_search');\n  console.log(`[MASTER] job_search completed | found=${jobs.length} jobs`);\n}\nif (internshipsCtx) {\n  ctx.results.internships_raw = internships;\n  ctx.agents_completed.push('internship_search');\n  console.log(`[MASTER] internship_search completed | found=${internships.length} internships`);\n}\n\n// Combine all listings under a single array for downstream agents\n// Each listing has a 'type' field: 'job' or 'internship'\nconst allListings = [\n  ...jobs.map(j => ({ ...j, listing_type: 'job' })),\n  ...internships.map(i => ({ ...i, listing_type: 'internship' }))\n];\n\nctx.results.jobs_merged = allListings;\n\nconsole.log(`[MASTER] search merge complete | total=${allListings.length} listings`);\n\nreturn [{ json: { execution_context: ctx } }];"
+      },
+      "id": "00000000-0000-0000-0000-000000000015",
+      "name": "Merge: Combine All Listings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3260, 100]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\u2b50 Agent: Job Quality v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000016",
+      "name": "\u2b50 Job Quality",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [3520, 100]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83d\udc7b Agent: Ghost Job Detection v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000017",
+      "name": "\ud83d\udc7b Ghost Detection",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [3780, 0]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\u26a0\ufe0f Agent: Scam Detection v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000018",
+      "name": "\u26a0\ufe0f Scam Detection",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [3780, 220]
+    },
+
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByIndex",
+        "options": { "includeUnpaired": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000019",
+      "name": "Merge: Quality Filters",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [4040, 100]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Apply Quality Filters\n// Combines ghost + scam detection results and applies\n// configurable thresholds to filter listings.\n// ============================================================\n\nconst allInputs = $input.all();\nlet ctx = null;\nlet ghostData = null;\nlet scamData  = null;\n\nfor (const item of allInputs) {\n  const d = item.json;\n  if (!ctx) ctx = d.execution_context;\n  if (d.filter_type === 'ghost') ghostData = d;\n  if (d.filter_type === 'scam')  scamData  = d;\n}\n\nif (!ctx) ctx = allInputs[0]?.json?.execution_context;\n\nconst ghostThreshold = parseInt($env.PIPELINE_GHOST_THRESHOLD) || 70;\nconst scamThreshold  = parseInt($env.PIPELINE_SCAM_THRESHOLD)  || 70;\n\n// Build a score map by job_id\nconst ghostScores = {};\nconst scamScores  = {};\n\n(ghostData?.ghost_scores || []).forEach(g => { ghostScores[g.listing_id] = g.ghost_score; });\n(scamData?.scam_scores   || []).forEach(s => { scamScores[s.listing_id]  = s.scam_score;  });\n\n// Apply filters to merged listings\nconst listings = ctx.results.jobs_merged || [];\n\nconst filtered = listings.filter(l => {\n  const ghostScore = ghostScores[l.listing_id] ?? 0;\n  const scamScore  = scamScores[l.listing_id]  ?? 0;\n  const isGhost    = ghostScore >= ghostThreshold;\n  const isScam     = scamScore  >= scamThreshold;\n\n  // Annotate listing\n  l.ghost_score = ghostScore;\n  l.scam_score  = scamScore;\n  l.is_ghost    = isGhost;\n  l.is_scam     = isScam;\n\n  return !isGhost && !isScam;\n});\n\nctx.results.jobs_ghost_filtered = filtered;\nctx.results.jobs_scam_filtered  = filtered;\nctx.agents_completed.push('ghost_detection', 'scam_detection');\n\nconsole.log(`[MASTER] quality filters applied | before=${listings.length} after=${filtered.length} (removed ${listings.length - filtered.length})`);\n\nreturn [{ json: { execution_context: ctx } }];"
+      },
+      "id": "00000000-0000-0000-0000-000000000020",
+      "name": "Apply: Quality Filters",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4300, 100]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83d\udd04 Agent: Duplicate Detection v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000021",
+      "name": "\ud83d\udd04 Duplicate Detection",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [4560, 100]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83c\udfe2 Agent: Company Analysis v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000022",
+      "name": "\ud83c\udfe2 Company Analysis",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [4820, 100]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83d\udcca Agent: ATS Matching v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000023",
+      "name": "\ud83d\udcca ATS Matching",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [5080, 100]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\u270f\ufe0f Agent: Resume Refinement v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000024",
+      "name": "\u270f\ufe0f Resume Refinement",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [5340, 100]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83d\udcdd Agent: Cover Letter v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000025",
+      "name": "\ud83d\udcdd Cover Letter",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [5600, 100]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83d\udce4 Agent: Application Engine v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000026",
+      "name": "\ud83d\udce4 Application Engine",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [5860, 100]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83d\udcca Agent: Analytics v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000027",
+      "name": "\ud83d\udcca Analytics",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [6120, 0]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83d\udd14 Agent: Notification Engine v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000028",
+      "name": "\ud83d\udd14 Notification Engine",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [6120, 220]
+    },
+
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByIndex",
+        "options": { "includeUnpaired": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000029",
+      "name": "Merge: Final Branches",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [6380, 100]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Build Final Pipeline Response\n// Assembles the canonical API response from the\n// execution context. Calculates total runtime.\n// ============================================================\n\nconst allInputs = $input.all();\nlet ctx = null;\nfor (const item of allInputs) {\n  if (item.json?.execution_context) { ctx = item.json.execution_context; break; }\n}\n\nconst ended_at      = new Date().toISOString();\nconst started_ms    = new Date(ctx.started_at).getTime();\nconst ended_ms      = Date.now();\nconst wall_time_ms  = ended_ms - started_ms;\n\nctx.meta.wall_time_ms  = wall_time_ms;\nctx.meta.ended_at      = ended_at;\nctx.pipeline_status    = ctx.agents_failed.length === 0 ? 'success' : 'partial_success';\n\nconsole.log(`[MASTER] Pipeline COMPLETE | id=${ctx.execution_id} | status=${ctx.pipeline_status} | time=${wall_time_ms}ms | tokens=${ctx.meta.total_tokens_used}`);\n\nconst response = {\n  success:         true,\n  execution_id:    ctx.execution_id,\n  status:          ctx.pipeline_status,\n  started_at:      ctx.started_at,\n  ended_at,\n  wall_time_ms,\n  agents_completed: ctx.agents_completed,\n  agents_failed:    ctx.agents_failed,\n  agents_skipped:   ctx.agents_skipped,\n  summary: {\n    jobs_found:          ctx.results.jobs_merged?.length        || 0,\n    jobs_after_filter:   ctx.results.jobs_deduplicated?.length  || 0,\n    ats_reports_created: ctx.results.ats_reports?.length        || 0,\n    applications_ready:  ctx.results.application_packets?.length|| 0\n  },\n  meta: ctx.meta,\n  errors:   ctx.errors,\n  warnings: ctx.warnings\n};\n\nreturn [{ json: { response, execution_context: ctx } }];"
+      },
+      "id": "00000000-0000-0000-0000-000000000030",
+      "name": "Build Final Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [6640, 100]
+    },
+
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.response) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              { "name": "Content-Type", "value": "application/json" },
+              { "name": "X-Execution-ID", "value": "={{ $json.response.execution_id }}" },
+              { "name": "X-Pipeline-Version", "value": "={{ $env.PIPELINE_VERSION || '1.0.0' }}" }
+            ]
+          }
+        }
+      },
+      "id": "00000000-0000-0000-0000-000000000031",
+      "name": "Respond: 200 Pipeline Complete",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [6900, 100]
+    },
+
+    {
+      "parameters": {},
+      "id": "00000000-0000-0000-0000-000000000032",
+      "name": "Global Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [400, 600]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Global Error Handler\n// Catches any unhandled errors in the pipeline.\n// Logs them and triggers an error notification.\n// ============================================================\n\nconst error = $input.first().json;\n\nconsole.error(`[MASTER][ERROR] Global error caught | workflow=${error.workflow?.name} | node=${error.node?.name} | message=${error.execution?.error?.message}`);\n\nconst errorPayload = {\n  error_type: 'pipeline_error',\n  workflow:   error.workflow?.name  || 'Master Workflow',\n  node:       error.node?.name      || 'Unknown Node',\n  message:    error.execution?.error?.message || 'Unknown error',\n  stack:      error.execution?.error?.stack   || null,\n  timestamp:  new Date().toISOString(),\n  execution_id: error.execution?.id || null\n};\n\nreturn [{ json: errorPayload }];"
+      },
+      "id": "00000000-0000-0000-0000-000000000033",
+      "name": "Handle Global Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 600]
+    },
+
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "\ud83d\udd14 Agent: Notification Engine v1.0.0",
+          "mode": "name"
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "00000000-0000-0000-0000-000000000034",
+      "name": "\ud83d\udd14 Notification: Error Alert",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [920, 600]
+    }
+
+  ],
+
+  "connections": {
+    "POST /pipeline/run": {
+      "main": [[{ "node": "Validate Incoming Request", "type": "main", "index": 0 }]]
+    },
+    "Validate Incoming Request": {
+      "main": [[{ "node": "Is Input Valid?", "type": "main", "index": 0 }]]
+    },
+    "Is Input Valid?": {
+      "main": [
+        [{ "node": "Initialize Execution Context", "type": "main", "index": 0 }],
+        [{ "node": "Respond: 400 Bad Request",     "type": "main", "index": 0 }]
+      ]
+    },
+    "Initialize Execution Context": {
+      "main": [[{ "node": "\ud83e\udde0 Resume Intelligence", "type": "main", "index": 0 }]]
+    },
+    "\ud83e\udde0 Resume Intelligence": {
+      "main": [[{ "node": "Absorb: Resume Result", "type": "main", "index": 0 }]]
+    },
+    "Absorb: Resume Result": {
+      "main": [[{ "node": "Did Resume Parse?", "type": "main", "index": 0 }]]
+    },
+    "Did Resume Parse?": {
+      "main": [
+        [{ "node": "\ud83c\udfaf Career Goal",              "type": "main", "index": 0 }],
+        [{ "node": "Respond: 422 Resume Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "\ud83c\udfaf Career Goal": {
+      "main": [[{ "node": "Absorb: Career Goals", "type": "main", "index": 0 }]]
+    },
+    "Absorb: Career Goals": {
+      "main": [
+        [{ "node": "\ud83d\udd0d Job Search",        "type": "main", "index": 0 }],
+        [{ "node": "\ud83c\udf93 Internship Search", "type": "main", "index": 0 }]
+      ]
+    },
+    "\ud83d\udd0d Job Search": {
+      "main": [[{ "node": "Merge: Search Branches", "type": "main", "index": 0 }]]
+    },
+    "\ud83c\udf93 Internship Search": {
+      "main": [[{ "node": "Merge: Search Branches", "type": "main", "index": 1 }]]
+    },
+    "Merge: Search Branches": {
+      "main": [[{ "node": "Merge: Combine All Listings", "type": "main", "index": 0 }]]
+    },
+    "Merge: Combine All Listings": {
+      "main": [[{ "node": "\u2b50 Job Quality", "type": "main", "index": 0 }]]
+    },
+    "\u2b50 Job Quality": {
+      "main": [
+        [{ "node": "\ud83d\udc7b Ghost Detection", "type": "main", "index": 0 }],
+        [{ "node": "\u26a0\ufe0f Scam Detection",  "type": "main", "index": 0 }]
+      ]
+    },
+    "\ud83d\udc7b Ghost Detection": {
+      "main": [[{ "node": "Merge: Quality Filters", "type": "main", "index": 0 }]]
+    },
+    "\u26a0\ufe0f Scam Detection": {
+      "main": [[{ "node": "Merge: Quality Filters", "type": "main", "index": 1 }]]
+    },
+    "Merge: Quality Filters": {
+      "main": [[{ "node": "Apply: Quality Filters", "type": "main", "index": 0 }]]
+    },
+    "Apply: Quality Filters": {
+      "main": [[{ "node": "\ud83d\udd04 Duplicate Detection", "type": "main", "index": 0 }]]
+    },
+    "\ud83d\udd04 Duplicate Detection": {
+      "main": [[{ "node": "\ud83c\udfe2 Company Analysis", "type": "main", "index": 0 }]]
+    },
+    "\ud83c\udfe2 Company Analysis": {
+      "main": [[{ "node": "\ud83d\udcca ATS Matching", "type": "main", "index": 0 }]]
+    },
+    "\ud83d\udcca ATS Matching": {
+      "main": [[{ "node": "\u270f\ufe0f Resume Refinement", "type": "main", "index": 0 }]]
+    },
+    "\u270f\ufe0f Resume Refinement": {
+      "main": [[{ "node": "\ud83d\udcdd Cover Letter", "type": "main", "index": 0 }]]
+    },
+    "\ud83d\udcdd Cover Letter": {
+      "main": [[{ "node": "\ud83d\udce4 Application Engine", "type": "main", "index": 0 }]]
+    },
+    "\ud83d\udce4 Application Engine": {
+      "main": [
+        [{ "node": "\ud83d\udcca Analytics",          "type": "main", "index": 0 }],
+        [{ "node": "\ud83d\udd14 Notification Engine", "type": "main", "index": 0 }]
+      ]
+    },
+    "\ud83d\udcca Analytics": {
+      "main": [[{ "node": "Merge: Final Branches", "type": "main", "index": 0 }]]
+    },
+    "\ud83d\udd14 Notification Engine": {
+      "main": [[{ "node": "Merge: Final Branches", "type": "main", "index": 1 }]]
+    },
+    "Merge: Final Branches": {
+      "main": [[{ "node": "Build Final Response", "type": "main", "index": 0 }]]
+    },
+    "Build Final Response": {
+      "main": [[{ "node": "Respond: 200 Pipeline Complete", "type": "main", "index": 0 }]]
+    },
+    "Global Error Trigger": {
+      "main": [[{ "node": "Handle Global Error", "type": "main", "index": 0 }]]
+    },
+    "Handle Global Error": {
+      "main": [[{ "node": "\ud83d\udd14 Notification: Error Alert", "type": "main", "index": 0 }]]
+    }
+  },
+
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "any",
+    "errorWorkflow": "",
+    "timezone": "UTC"
+  },
+  "versionId": "master-workflow-v1-0-0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "placeholder-replace-after-import"
+  },
+  "id": "master-workflow-v1",
+  "tags": [
+    { "createdAt": "2026-07-13T00:00:00.000Z", "updatedAt": "2026-07-13T00:00:00.000Z", "id": "tag-master", "name": "master" },
+    { "createdAt": "2026-07-13T00:00:00.000Z", "updatedAt": "2026-07-13T00:00:00.000Z", "id": "tag-v1",     "name": "v1.0.0" },
+    { "createdAt": "2026-07-13T00:00:00.000Z", "updatedAt": "2026-07-13T00:00:00.000Z", "id": "tag-core",   "name": "core" }
+  ]
+}

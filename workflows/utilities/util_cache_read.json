@@ -1,0 +1,23 @@
+{
+  "name": "\ud83d\udee0 Utility: Cache Read v1.0.0",
+  "nodes": [
+    { "parameters": {}, "id": "cr-0001", "name": "Execute Workflow Trigger", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1, "position": [200, 300] },
+    {
+      "parameters": {
+        "jsCode": "// UTILITY: Cache Read v1.0.0\n// Reusable utility called by any agent to check Redis cache.\n// INPUT:  { cache_key: string, ttl_seconds?: number }\n// OUTPUT: { hit: boolean, data: any | null, cache_key: string }\n//\n// PLACEHOLDER: Always returns cache MISS.\n// In Phase 4, this will call Redis GET via n8n Redis node.\n\nconst input = $input.first().json;\nconst cache_key = input.cache_key;\n\nif (!cache_key) throw new Error('[util_cache_read] Missing required field: cache_key');\n\nconsole.log(`[util_cache_read] KEY=${cache_key} → MISS (placeholder)`);\n\nreturn [{\n  json: {\n    hit:       false,\n    data:      null,\n    cache_key,\n    source:    'placeholder'\n  }\n}];"
+      },
+      "id": "cr-0002",
+      "name": "Cache Read: Check Redis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": { "Execute Workflow Trigger": { "main": [[{ "node": "Cache Read: Check Redis", "type": "main", "index": 0 }]] } },
+  "active": false,
+  "settings": { "executionOrder": "v1", "callerPolicy": "any" },
+  "versionId": "util-cache-read-v1-0-0",
+  "meta": { "instanceId": "placeholder-replace-after-import" },
+  "id": "util-cache-read-v1",
+  "tags": [{ "name": "utility" }, { "name": "cache" }, { "name": "redis" }]
+}

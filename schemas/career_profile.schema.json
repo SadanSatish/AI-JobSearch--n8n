@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "career_profile.schema.json",
+  "title": "Inferred Career Profile",
+  "description": "Career intelligence inferred deterministically from the parsed resume data",
+  "type": "object",
+  "required": ["inferred_roles", "experience_level", "primary_domain", "secondary_domain", "total_years_experience", "is_student"],
+  "additionalProperties": false,
+  "properties": {
+    "inferred_roles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Most likely target roles based on past experience and skills (e.g., 'Software Engineer', 'Data Scientist')"
+    },
+    "experience_level": {
+      "type": "string",
+      "enum": ["intern", "entry_level", "mid_level", "senior", "lead", "executive"],
+      "description": "Computed experience level based on total_years_experience and recent titles"
+    },
+    "primary_domain": {
+      "type": "string",
+      "description": "The main technical domain computed via skill domain signals (e.g., 'Backend Development')"
+    },
+    "secondary_domain": {
+      "type": ["string", "null"],
+      "description": "The secondary technical domain, if a strong signal exists"
+    },
+    "total_years_experience": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Calculated sum of all non-overlapping professional experience durations in years"
+    },
+    "is_student": {
+      "type": "boolean",
+      "description": "True if currently enrolled in an education program with an end date in the future"
+    }
+  }
+}

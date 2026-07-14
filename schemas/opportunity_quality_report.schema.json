@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "opportunity_quality_report.schema.json",
+  "title": "Opportunity Quality Report",
+  "description": "Comprehensive quality verification and fraud detection report for a job opportunity",
+  "type": "object",
+  "required": [
+    "ghost_probability",
+    "scam_risk",
+    "link_status",
+    "classification",
+    "confidence_score"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "ghost_probability": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Probability this job is a ghost job (0=Real, 100=Definitely Ghost)"
+    },
+    "ghost_reasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "scam_risk": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Probability this job is a scam/fraud (0=Safe, 100=Definitely Scam)"
+    },
+    "scam_reasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "link_status": {
+      "type": "string",
+      "enum": ["VALID", "BROKEN", "TIMEOUT", "UNVERIFIED"]
+    },
+    "classification": {
+      "type": "string",
+      "enum": [
+        "APPLY_IMMEDIATELY",
+        "HIGH_PRIORITY",
+        "GOOD_MATCH",
+        "NEEDS_RESUME_OPTIMIZATION",
+        "MANUAL_REVIEW",
+        "LOW_PRIORITY",
+        "REJECT"
+      ]
+    },
+    "confidence_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "How confident the AI is in this assessment"
+    }
+  }
+}
