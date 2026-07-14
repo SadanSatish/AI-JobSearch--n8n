@@ -27,6 +27,12 @@ const envSchema = z.object({
   S3_BUCKET: z.string().optional(),
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
+
+  OPENROUTER_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  QDRANT_URL: z.string().optional(),
+  QDRANT_API_KEY: z.string().optional(),
+  REDIS_URL: z.string().optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

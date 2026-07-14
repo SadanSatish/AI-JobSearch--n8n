@@ -10,6 +10,7 @@ import { globalLimiter } from './middlewares/rateLimiter';
 import authRoutes from './routes/authRoutes';
 import userRoutes from './routes/userRoutes';
 import systemRoutes from './routes/systemRoutes';
+import aiRoutes from './routes/aiRoutes';
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use(globalLimiter);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/system', systemRoutes);
+app.use('/api/v1/ai', aiRoutes);
 app.use('/health', systemRoutes); // Legacy fallback
 
 // 404 handler
