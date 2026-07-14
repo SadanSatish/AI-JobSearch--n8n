@@ -1,25 +1,51 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
+import { config } from './config/env';
+import { logger } from './config/logger';
+import { errorHandler } from './middlewares/errorHandler';
+import { globalLimiter } from './middlewares/rateLimiter';
 
-dotenv.config();
+import authRoutes from './routes/authRoutes';
+import userRoutes from './routes/userRoutes';
+import systemRoutes from './routes/systemRoutes';
 
 const app = express();
-const port = process.env.PORT || 3000;
 
+// Security and utility middlewares
 app.use(helmet());
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' ? 'https://yourdomain.com' : 'http://localhost:5173',
+  credentials: true
+}));
+app.use(express.json({ limit: '10kb' }));
+app.use(cookieParser());
+app.use(globalLimiter);
 
-app.get('/health', (req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    service: 'backend-api'
+// Routes
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/system', systemRoutes);
+app.use('/health', systemRoutes); // Legacy fallback
+
+// 404 handler
+app.use((req, res, next) => {
+  res.status(404).json({
+    status: 'fail',
+    message: `Can't find ${req.originalUrl} on this server!`
   });
 });
 
-app.listen(port, () => {
-  console.log(`Backend API running on port ${port}`);
-});
+// Global Error Handler
+app.use(errorHandler);
+
+const port = config.PORT;
+
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(port, () => {
+    logger.info(`Backend API running on port ${port} in ${config.NODE_ENV} mode`);
+  });
+}
+
+export default app;
