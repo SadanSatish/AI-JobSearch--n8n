@@ -25,6 +25,8 @@ coverage/
 
 # Data and logs
 *.log
+logs/
+.n8n
 database/data/
 redis_data/
 qdrant_data/

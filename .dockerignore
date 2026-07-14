@@ -22,3 +22,10 @@ database/data
 redis_data
 storage
 qdrant_data
+
+# Keys and Secrets
+*.pem
+*.key
+*.p12
+credentials.json
+service-account.json

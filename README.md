@@ -19,9 +19,9 @@ An enterprise-grade, fully autonomous career pipeline. This platform ingests res
 ```bash
 git clone https://github.com/your-org/ai-job-search.git
 cd ai-job-search
-cp .env.example docker/.env
+cp .env.example .env
 ```
-*Edit `docker/.env` to include your `OPENAI_API_KEY` and `OPENROUTER_API_KEY`.*
+*Edit `.env` to include your `OPENAI_API_KEY` and `OPENROUTER_API_KEY`.*
 
 2. **Spin Up the Production Stack:**
 ```bash
@@ -42,6 +42,9 @@ Visit `http://localhost` (or your configured `DOMAIN`). Use the `API_BEARER_TOKE
 ## 📚 Documentation
 For detailed architecture deep-dives, see the `docs/` folder:
 - [Deployment Guide](docs/DEPLOYMENT.md)
+- [Render Deployment Setup](DEPLOY_RENDER.md)
+- [Environment Setup](ENVIRONMENT_SETUP.md)
+- [Security Architecture](SECURITY.md)
 - [Operations Runbook](docs/RUNBOOK.md)
 - [QA Validation Report](docs/QA_REPORT.md)
 - [Cost Analysis](docs/COST_ANALYSIS.md)
