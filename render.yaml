@@ -1,23 +1,4 @@
-databases:
-  # ---------------------------------------------------------------------------
-  # Database: Render Managed PostgreSQL
-  # ---------------------------------------------------------------------------
-  - name: jsp-postgres
-    plan: starter
-    databaseName: jobsearch
-    user: jobsearch_user
-    ipAllowList: [] # default to all if internal
-
 services:
-  # ---------------------------------------------------------------------------
-  # Redis: Render Key-Value Store
-  # ---------------------------------------------------------------------------
-  - type: keyvalue
-    name: jsp-redis
-    plan: starter
-    ipAllowList: [] # default to all if internal
-    maxmemoryPolicy: allkeys-lru
-
   # ---------------------------------------------------------------------------
   # Backend Orchestrator: n8n Web Service
   # ---------------------------------------------------------------------------
@@ -25,79 +6,61 @@ services:
     name: jsp-n8n
     runtime: docker
     dockerfilePath: ./docker/Dockerfile.n8n
-    plan: standard
+    plan: free
     healthCheckPath: /healthz
     autoDeployTrigger: commit
-    disk:
-      name: n8n-data
-      mountPath: /home/node/.n8n
-      sizeGB: 10
     envVars:
-      # Database connection (n8n internal)
+      # Application Database connection (Neon PostgreSQL)
+      - key: DATABASE_URL
+        sync: false
+        
+      # n8n Database connection (Neon PostgreSQL)
       - key: DB_TYPE
         value: postgresdb
       - key: DB_POSTGRESDB_HOST
-        fromDatabase:
-          name: jsp-postgres
-          property: host
+        sync: false
       - key: DB_POSTGRESDB_PORT
-        fromDatabase:
-          name: jsp-postgres
-          property: port
+        sync: false
       - key: DB_POSTGRESDB_DATABASE
-        fromDatabase:
-          name: jsp-postgres
-          property: database
+        sync: false
       - key: DB_POSTGRESDB_USER
-        fromDatabase:
-          name: jsp-postgres
-          property: user
+        sync: false
       - key: DB_POSTGRESDB_PASSWORD
-        fromDatabase:
-          name: jsp-postgres
-          property: password
+        sync: false
 
-      # Application Database connection (platform data)
+      # Application Database connection components
       - key: APP_DB_HOST
-        fromDatabase:
-          name: jsp-postgres
-          property: host
+        sync: false
       - key: APP_DB_PORT
-        fromDatabase:
-          name: jsp-postgres
-          property: port
+        sync: false
       - key: APP_DB_NAME
-        fromDatabase:
-          name: jsp-postgres
-          property: database
+        sync: false
       - key: APP_DB_USER
-        fromDatabase:
-          name: jsp-postgres
-          property: user
+        sync: false
       - key: APP_DB_PASSWORD
-        fromDatabase:
-          name: jsp-postgres
-          property: password
+        sync: false
       - key: APP_DB_SCHEMA
         value: public
           
-      # Redis connection (n8n Bull Queue)
-      # Render Key-Value does not natively expose host/port via Blueprint properties.
-      # You must manually copy the internal host and port from your Render Dashboard.
-      - key: QUEUE_BULL_REDIS_HOST
+      # Redis connection (Upstash Redis)
+      - key: REDIS_URL
         sync: false
-      - key: QUEUE_BULL_REDIS_PORT
-        sync: false
-
-      # Redis Cache (Application Layer)
       - key: REDIS_HOST
         sync: false
       - key: REDIS_PORT
         sync: false
+      - key: REDIS_PASSWORD
+        sync: false
       - key: REDIS_DB
         value: "0"
+      - key: QUEUE_BULL_REDIS_HOST
+        sync: false
+      - key: QUEUE_BULL_REDIS_PORT
+        sync: false
+      - key: QUEUE_BULL_REDIS_PASSWORD
+        sync: false
 
-      # Qdrant Cloud connection
+      # Qdrant Cloud connection (Vector Database)
       - key: QDRANT_URL
         sync: false
       - key: QDRANT_API_KEY
@@ -124,7 +87,7 @@ services:
       - key: EXECUTIONS_DATA_SAVE_ON_PROGRESS
         value: false
       - key: N8N_DEFAULT_BINARY_DATA_MODE
-        value: filesystem
+        value: default
         
       # Authentication & Security
       - key: N8N_BASIC_AUTH_ACTIVE
