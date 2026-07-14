@@ -2,23 +2,26 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Briefcase, FileText, Send, CheckCircle, Clock } from 'lucide-react';
 
-const API_BASE = 'http://localhost:5678/webhook/api/v1';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5678/webhook/api/v1';
 const HEADERS = {
-  'Authorization': 'Bearer DEV_TOKEN_123',
+  'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN || 'DEV_TOKEN_123'}`,
   'x-user-id': '11111111-1111-1111-1111-111111111111'
 };
 
 export default function Dashboard() {
   const [kpis, setKpis] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchKpis = async () => {
       try {
+        setError(null);
         const res = await axios.get(`${API_BASE}/dashboard/kpis`, { headers: HEADERS });
         setKpis(res.data.data);
       } catch (err) {
         console.error("Failed to load KPIs", err);
+        setError("Failed to connect to the backend server. Please try again later.");
       } finally {
         setLoading(false);
       }
@@ -27,6 +30,7 @@ export default function Dashboard() {
   }, []);
 
   if (loading) return <div className="p-8 text-white">Loading Dashboard...</div>;
+  if (error) return <div className="p-8 text-red-400 bg-red-950/20 border border-red-900 rounded-lg m-8">{error}</div>;
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
