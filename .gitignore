@@ -1,0 +1,31 @@
+# Environment Variables
+.env
+.env.*
+!.env.example
+docker/.env
+
+# Keys and Secrets
+*.pem
+*.key
+*.p12
+credentials.json
+service-account.json
+
+# Dependencies
+node_modules/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Data and logs
+*.log
+database/data/
+redis_data/
+qdrant_data/
+storage/
