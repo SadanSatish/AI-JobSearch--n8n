@@ -12,7 +12,7 @@ services:
   # ---------------------------------------------------------------------------
   # Redis: Render Managed Redis
   # ---------------------------------------------------------------------------
-  - type: redis
+  - type: keyvalue
     name: jsp-redis
     plan: starter
     ipAllowList: [] # default to all if internal
@@ -23,11 +23,11 @@ services:
   # ---------------------------------------------------------------------------
   - type: web
     name: jsp-n8n
-    env: docker
+    runtime: docker
     dockerfilePath: ./docker/Dockerfile.n8n
     plan: standard
     healthCheckPath: /healthz
-    autoDeploy: true
+    autoDeployTrigger: commit
     disk:
       name: n8n-data
       mountPath: /home/node/.n8n
@@ -84,34 +84,34 @@ services:
       # Redis connection (n8n Bull Queue)
       - key: QUEUE_BULL_REDIS_HOST
         fromService:
-          type: redis
+          type: keyvalue
           name: jsp-redis
           property: host
       - key: QUEUE_BULL_REDIS_PORT
         fromService:
-          type: redis
+          type: keyvalue
           name: jsp-redis
           property: port
       - key: QUEUE_BULL_REDIS_PASSWORD
         fromService:
-          type: redis
+          type: keyvalue
           name: jsp-redis
           property: password
 
       # Redis Cache (Application Layer)
       - key: REDIS_HOST
         fromService:
-          type: redis
+          type: keyvalue
           name: jsp-redis
           property: host
       - key: REDIS_PORT
         fromService:
-          type: redis
+          type: keyvalue
           name: jsp-redis
           property: port
       - key: REDIS_PASSWORD
         fromService:
-          type: redis
+          type: keyvalue
           name: jsp-redis
           property: password
       - key: REDIS_DB
@@ -191,11 +191,12 @@ services:
   # ---------------------------------------------------------------------------
   - type: web
     name: jsp-frontend
-    env: static
+    runtime: static
     buildCommand: npm ci && npm run build
-    publishPath: ./dist
+    staticPublishPath: ./dist
     rootDir: ./frontend
-    pullRequestPreviewsEnabled: true
+    previews:
+      generation: automatic
     envVars:
       - key: VITE_API_BASE_URL
         value: "https://jsp-n8n.onrender.com"
