@@ -6,7 +6,7 @@ The `render.yaml` file defines the infrastructure, services, and environment req
 ## 1. Prerequisites
 
 Before you deploy to Render, ensure you have the following accounts and resources ready:
-- **Neon PostgreSQL**: For the database. **CRITICAL: You must use the Neon Direct Connection, not the Pooled Connection.** n8n manages its own connection pool and will fail to initialize or migrate if placed behind an external transaction pooler like PgBouncer. Ensure your connection string/host does NOT contain `-pooler`.
+- **Neon PostgreSQL**: For the database. **CRITICAL: You must create a BRAND NEW database or Neon Branch for this deployment.** n8n must initialize its schema from scratch. You must use the Neon Direct Connection, not the Pooled Connection (ensure your connection string/host does NOT contain `-pooler`).
 - **Upstash Redis**: For caching and queue management.
 - **Qdrant Cloud**: For the vector database.
 - **Render Account**: For hosting the web services (n8n and Frontend).

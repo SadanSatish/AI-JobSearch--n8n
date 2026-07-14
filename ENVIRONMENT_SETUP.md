@@ -10,7 +10,7 @@ This project relies entirely on environment variables to manage configuration an
    cp .env.example .env
    ```
 3. **Populate Values**: Open `.env` and replace all dummy placeholders with your actual credentials.
-   - **Database**: Get your `DB_POSTGRESDB_HOST` from Neon. **CRITICAL: Ensure you are using the Direct Connection, NOT the Pooled Connection. The host must NOT contain `-pooler`.**
+   - **Database**: In your Neon Console, create a **BRAND NEW DATABASE** (or a new database branch) specifically for n8n. n8n must initialize its schema from scratch. Get your `DB_POSTGRESDB_HOST` from this new Neon DB. **CRITICAL: Ensure you are using the Direct Connection, NOT the Pooled Connection. The host must NOT contain `-pooler`.**
    - **Redis**: Get your `REDIS_URL` and `REDIS_PASSWORD` from Upstash.
    - **Vector Store**: Get your `QDRANT_URL` and `QDRANT_API_KEY` from Qdrant Cloud.
    - **AI Providers**: Populate `OPENROUTER_API_KEY` and `GEMINI_API_KEY`.
