@@ -10,7 +10,7 @@ This project relies entirely on environment variables to manage configuration an
    cp .env.example .env
    ```
 3. **Populate Values**: Open `.env` and replace all dummy placeholders with your actual credentials.
-   - **Database**: Get your `DATABASE_URL` from Neon.
+   - **Database**: Get your `DATABASE_URL` from Neon. Ensure it includes `?sslmode=require` at the end.
    - **Redis**: Get your `REDIS_URL` and `REDIS_PASSWORD` from Upstash.
    - **Vector Store**: Get your `QDRANT_URL` and `QDRANT_API_KEY` from Qdrant Cloud.
    - **AI Providers**: Populate `OPENROUTER_API_KEY` and `GEMINI_API_KEY`.
