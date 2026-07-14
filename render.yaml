@@ -10,7 +10,7 @@ databases:
 
 services:
   # ---------------------------------------------------------------------------
-  # Redis: Render Managed Redis
+  # Redis: Render Key-Value Store
   # ---------------------------------------------------------------------------
   - type: keyvalue
     name: jsp-redis
@@ -82,38 +82,18 @@ services:
         value: public
           
       # Redis connection (n8n Bull Queue)
+      # Render Key-Value does not natively expose host/port via Blueprint properties.
+      # You must manually copy the internal host and port from your Render Dashboard.
       - key: QUEUE_BULL_REDIS_HOST
-        fromService:
-          type: keyvalue
-          name: jsp-redis
-          property: host
+        sync: false
       - key: QUEUE_BULL_REDIS_PORT
-        fromService:
-          type: keyvalue
-          name: jsp-redis
-          property: port
-      - key: QUEUE_BULL_REDIS_PASSWORD
-        fromService:
-          type: keyvalue
-          name: jsp-redis
-          property: password
+        sync: false
 
       # Redis Cache (Application Layer)
       - key: REDIS_HOST
-        fromService:
-          type: keyvalue
-          name: jsp-redis
-          property: host
+        sync: false
       - key: REDIS_PORT
-        fromService:
-          type: keyvalue
-          name: jsp-redis
-          property: port
-      - key: REDIS_PASSWORD
-        fromService:
-          type: keyvalue
-          name: jsp-redis
-          property: password
+        sync: false
       - key: REDIS_DB
         value: "0"
 
@@ -201,4 +181,4 @@ services:
       - key: VITE_API_BASE_URL
         value: "https://jsp-n8n.onrender.com"
       - key: NODE_VERSION
-        value: 22
+        value: "22"
