@@ -2,9 +2,10 @@ services:
   - type: web
     name: jsp-backend
     env: docker
-    dockerfilePath: ./docker/Dockerfile.backend
+    rootDir: backend
+    dockerfilePath: ../docker/Dockerfile.backend
     plan: free
-    healthCheckPath: /health
+    healthCheckPath: /api/v1/system/health
     envVars:
       - key: PORT
         value: 3000
@@ -14,8 +15,9 @@ services:
   - type: web
     name: jsp-frontend
     env: static
+    rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: ./frontend/dist
+    staticPublishPath: ./dist
     envVars:
       - key: VITE_API_BASE_URL
         fromService:

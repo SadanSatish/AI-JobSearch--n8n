@@ -1,12 +1,30 @@
-# Job Search Platform (JSP)
+# AI Job Search Platform
 
-Phase 1 infrastructure rebuild. This project separates concerns into a modular React frontend, a Node.js backend proxy, and an n8n orchestration engine backed by PostgreSQL and Redis.
+A comprehensive, Multi-Agent powered Job Search Orchestrator that automates finding, evaluating, and applying to high-quality jobs tailored perfectly to a user's resume and skillset.
 
-## Modules
-- `frontend/`: React + Vite + Tailwind v4 UI
-- `backend/`: Express + Node.js Proxy & Config Loader
-- `docker/`: Build recipes and configurations
-- `database/`: Schema schemas, migrations, and seeders
-- `.archive/`: Legacy business logic workflows
+## Key Features
 
-See `docs/PROJECT_STRUCTURE.md` for a full breakdown.
+- **Multi-Agent Orchestration**: Planner Agent, Search Agent, Quality Evaluation Agent, and ATS Ranking Agent work together to discover and rank jobs using OpenRouter/Gemini.
+- **Resume Hub**: Upload PDF resumes, have them instantly parsed by AI, and view granular ATS metrics.
+- **Kanban Application Tracker**: Move applications gracefully through Saved, Applied, Interviewing, and Rejected states.
+- **n8n Workflow Engine**: Asynchronous job fetching and robust event-driven operations powered by `n8n`.
+- **Premium Interface**: Built with React 19, Tailwind CSS v4, and Radix UI primitives.
+
+## Technology Stack
+
+- **Frontend**: React 19, TypeScript, Vite, Tailwind CSS v4, Framer Motion, TanStack Query
+- **Backend**: Node.js, Express, TypeScript, Zod, JWT
+- **Database**: Neon (PostgreSQL connection pooler optimized)
+- **Vector Search / Memory**: Qdrant, Upstash Redis
+- **Automation / Tasks**: n8n
+- **Infrastructure**: Docker, Docker Compose, Render
+
+## Getting Started
+
+See [INSTALLATION.md](INSTALLATION.md) for local setup instructions.
+
+## Documentation
+
+- [Deployment Guide](DEPLOYMENT.md)
+- [Architecture Overview](ARCHITECTURE.md)
+- [Security Policies](SECURITY.md)

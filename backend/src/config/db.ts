@@ -11,6 +11,7 @@ export const dbPool = new Pool({
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
+  ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
 dbPool.on('error', (err) => {
