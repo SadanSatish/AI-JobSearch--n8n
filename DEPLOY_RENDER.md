@@ -21,6 +21,11 @@ Before you deploy to Render, ensure you have the following accounts and resource
    - **Do not** check in your `.env` to GitHub. It is ignored by `.gitignore`.
 4. **Deploy**: Click **Apply** to provision the services. Render will automatically build and deploy both the `jsp-n8n` backend and the `jsp-frontend` static site.
 
+### Important: Production Constraints on Free Tier
+- **Memory Caps:** The Render Free Tier has a strict 512MB RAM limit. To prevent out-of-memory (OOM) crashes, `render.yaml` caps the Node heap (`NODE_OPTIONS=--max-old-space-size=384`) and forces workflows to execute in the main process (`EXECUTIONS_PROCESS=main`).
+- **Binary Data:** Binary data is saved to the filesystem instead of the database to conserve memory.
+- **Docker Version:** We strictly peg `Dockerfile.n8n` to a stable version (e.g. `1.53.0`) rather than `latest` to ensure predictable builds and startup sequences.
+
 ## 3. Adding Environment Variables
 
 If you need to add new environment variables in the future:

@@ -1,5 +1,5 @@
 # Stage 1: Base n8n image
-FROM n8nio/n8n:latest
+FROM n8nio/n8n:1.53.0
 
 # Switch to root to configure directories and permissions
 USER root
@@ -9,7 +9,8 @@ RUN mkdir -p /home/node/storage \
     && mkdir -p /home/node/workflows \
     && mkdir -p /home/node/prompts \
     && mkdir -p /home/node/config \
-    && chown -R node:node /home/node/storage /home/node/workflows /home/node/prompts /home/node/config
+    && mkdir -p /home/node/.n8n/binaryData \
+    && chown -R node:node /home/node/storage /home/node/workflows /home/node/prompts /home/node/config /home/node/.n8n
 
 # Copy local workflows, prompts, and config into the image
 # This allows stateless deployment while still having access to pre-built logic
