@@ -1,160 +1,53 @@
 services:
-  # ---------------------------------------------------------------------------
-  # Backend Orchestrator: n8n Web Service
-  # ---------------------------------------------------------------------------
   - type: web
+    name: jsp-backend
+    env: docker
+    dockerfilePath: ./docker/Dockerfile.backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+
+  - type: web
+    name: jsp-frontend
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./frontend/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: jsp-backend
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - type: pserv
     name: jsp-n8n
-    runtime: docker
+    env: docker
     dockerfilePath: ./docker/Dockerfile.n8n
     plan: free
-    healthCheckPath: /healthz
-    autoDeployTrigger: commit
+    disk:
+      name: n8n-data
+      mountPath: /home/node/.n8n
+      sizeGB: 1
     envVars:
-      # Application Database connection (Neon PostgreSQL)
-      # n8n Database connection (Neon PostgreSQL)
+      - key: N8N_HOST
+        value: 0.0.0.0
+      - key: N8N_PORT
+        value: 5678
+      - key: N8N_PROTOCOL
+        value: http
       - key: DB_TYPE
         value: postgresdb
       - key: DB_POSTGRESDB_HOST
         sync: false
       - key: DB_POSTGRESDB_PORT
-        sync: false
+        value: 5432
       - key: DB_POSTGRESDB_DATABASE
         sync: false
       - key: DB_POSTGRESDB_USER
         sync: false
       - key: DB_POSTGRESDB_PASSWORD
         sync: false
-      - key: DB_POSTGRESDB_SSL_ENABLED
-        value: "true"
-      - key: DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED
-        value: "false"
-
-      # Application Database connection components
-      - key: APP_DB_HOST
-        sync: false
-      - key: APP_DB_PORT
-        sync: false
-      - key: APP_DB_NAME
-        sync: false
-      - key: APP_DB_USER
-        sync: false
-      - key: APP_DB_PASSWORD
-        sync: false
-      - key: APP_DB_SCHEMA
-        value: public
-          
-      # Redis connection (Upstash Redis)
-      - key: REDIS_URL
-        sync: false
-      - key: REDIS_HOST
-        sync: false
-      - key: REDIS_PORT
-        sync: false
-      - key: REDIS_PASSWORD
-        sync: false
-      - key: REDIS_DB
-        value: "0"
-      - key: QUEUE_BULL_REDIS_HOST
-        sync: false
-      - key: QUEUE_BULL_REDIS_PORT
-        sync: false
-      - key: QUEUE_BULL_REDIS_PASSWORD
-        sync: false
-
-      # Qdrant Cloud connection (Vector Database)
-      - key: QDRANT_URL
-        sync: false
-      - key: QDRANT_API_KEY
-        sync: false
-
-      # n8n Configuration
-      - key: N8N_HOST
-        fromService:
-          type: web
-          name: jsp-n8n
-          property: host
-      - key: WEBHOOK_URL
-        sync: false
-      - key: N8N_PROTOCOL
-        value: https
-      - key: NODE_ENV
-        value: production
-      - key: N8N_ENCRYPTION_KEY
-        sync: false
-      - key: EXECUTIONS_DATA_SAVE_ON_ERROR
-        value: all
-      - key: EXECUTIONS_DATA_SAVE_ON_SUCCESS
-        value: none
-      - key: EXECUTIONS_DATA_SAVE_ON_PROGRESS
-        value: false
-      - key: N8N_DEFAULT_BINARY_DATA_MODE
-        value: filesystem
-      - key: NODE_OPTIONS
-        value: "--max-old-space-size=384"
-      - key: EXECUTIONS_PROCESS
-        value: "main"
-      - key: EXECUTIONS_MODE
-        value: "regular"
-      - key: EXECUTIONS_DATA_PRUNE
-        value: "true"
-      - key: EXECUTIONS_DATA_MAX_AGE
-        value: "24"
-        
-      # Authentication & Security
-      - key: N8N_BASIC_AUTH_ACTIVE
-        value: "true"
-      - key: N8N_BASIC_AUTH_USER
-        value: "admin"
-      - key: N8N_BASIC_AUTH_PASSWORD
-        sync: false
-      - key: ENCRYPTION_KEY_PII
-        sync: false
-      - key: API_BEARER_TOKEN
-        sync: false
-      - key: JWT_SECRET
-        sync: false
-        
-      # API Keys (To be provided in the Render Dashboard)
-      - key: OPENROUTER_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: SERPAPI_KEY
-        sync: false
-      - key: ADZUNA_APP_ID
-        sync: false
-      - key: ADZUNA_APP_KEY
-        sync: false
-      - key: RAPIDAPI_KEY
-        sync: false
-        
-      # Storage & Notifications (To be provided in the Render Dashboard)
-      - key: STORAGE_PROVIDER
-        value: "local"
-      - key: S3_BUCKET
-        sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-
-  # ---------------------------------------------------------------------------
-  # Frontend: React/Vite Static Site
-  # ---------------------------------------------------------------------------
-  - type: web
-    name: jsp-frontend
-    runtime: static
-    buildCommand: npm ci && npm run build
-    staticPublishPath: ./dist
-    rootDir: ./frontend
-    previews:
-      generation: automatic
-    envVars:
-      - key: VITE_API_BASE_URL
-        sync: false
-      - key: NODE_VERSION
-        value: "22"

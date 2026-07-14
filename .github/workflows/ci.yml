@@ -1,0 +1,36 @@
+name: CI Validation
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 22.x
+        cache: 'npm'
+
+    - name: Frontend Build Validation
+      run: |
+        cd frontend
+        npm ci
+        npm run build
+        
+    - name: Backend Build Validation
+      run: |
+        cd backend
+        npm ci
+        npm run build
+
+    - name: Docker Compose Validation
+      run: |
+        docker compose config

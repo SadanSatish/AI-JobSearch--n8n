@@ -1,0 +1,41 @@
+{
+  "name": "master-workflow",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "prepare": "husky",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "lint-staged": {
+    "*.{js,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SadanSatish/AI-JobSearch--n8n.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/SadanSatish/AI-JobSearch--n8n/issues"
+  },
+  "homepage": "https://github.com/SadanSatish/AI-JobSearch--n8n#readme",
+  "devDependencies": {
+    "eslint": "^10.7.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
+    "prettier": "^3.9.5"
+  }
+}

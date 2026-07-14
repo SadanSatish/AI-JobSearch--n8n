@@ -1,24 +1,8 @@
-# Stage 1: Base n8n image
 FROM n8nio/n8n:1.53.0
 
-# Switch to root to configure directories and permissions
 USER root
 
-# Create necessary directories for storage and configuration
-RUN mkdir -p /home/node/storage \
-    && mkdir -p /home/node/workflows \
-    && mkdir -p /home/node/prompts \
-    && mkdir -p /home/node/config \
-    && mkdir -p /home/node/.n8n/binaryData \
-    && chown -R node:node /home/node/storage /home/node/workflows /home/node/prompts /home/node/config /home/node/.n8n
+# Install system dependencies if required for workflows (e.g. curl, jq)
+RUN apk add --no-cache curl jq python3 py3-pip
 
-# Copy local workflows, prompts, and config into the image
-# This allows stateless deployment while still having access to pre-built logic
-COPY --chown=node:node ./workflows /home/node/workflows
-COPY --chown=node:node ./prompts /home/node/prompts
-COPY --chown=node:node ./config /home/node/config
-
-# Switch back to the node user for security
 USER node
-
-# Default command is handled by the base image (n8n start)
