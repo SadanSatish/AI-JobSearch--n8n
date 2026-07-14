@@ -11,6 +11,8 @@ import authRoutes from './routes/authRoutes';
 import userRoutes from './routes/userRoutes';
 import systemRoutes from './routes/systemRoutes';
 import aiRoutes from './routes/aiRoutes';
+import agentRoutes from './routes/agentRoutes';
+import jobRoutes from './routes/jobRoutes';
 
 const app = express();
 
@@ -29,6 +31,8 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/system', systemRoutes);
 app.use('/api/v1/ai', aiRoutes);
+app.use('/api/v1/agents', agentRoutes);
+app.use('/api/v1/jobs', jobRoutes);
 app.use('/health', systemRoutes); // Legacy fallback
 
 // 404 handler
