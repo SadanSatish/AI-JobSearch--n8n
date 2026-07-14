@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Briefcase, FileText, Send, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Briefcase, FileText, Send, CheckCircle, Clock } from 'lucide-react';
 
 const API_BASE = 'http://localhost:5678/webhook/api/v1';
 const HEADERS = {

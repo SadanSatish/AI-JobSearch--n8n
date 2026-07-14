@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import Dashboard from './Dashboard';
 import { LayoutDashboard, Briefcase, FileText, Send, Settings } from 'lucide-react';
