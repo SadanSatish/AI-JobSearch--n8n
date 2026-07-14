@@ -11,9 +11,6 @@ services:
     autoDeployTrigger: commit
     envVars:
       # Application Database connection (Neon PostgreSQL)
-      - key: DATABASE_URL
-        sync: false
-        
       # n8n Database connection (Neon PostgreSQL)
       - key: DB_TYPE
         value: postgresdb
